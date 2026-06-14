@@ -1,0 +1,2 @@
+﻿date,equity,cash,pos_value,cum_return_pct,daily_pnl,n_positions,n_candidates,n_entries,n_exits,n_slippage,halted,regime,lot
+2026-06-10,69697.7,23953.1,45744.7,-0.43,0.0,3,3,3,0,3,False,block_only:多頭(可進場),1

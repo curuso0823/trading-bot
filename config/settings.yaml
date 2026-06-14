@@ -1,0 +1,44 @@
+# ==========================================
+# 系統設定
+# ==========================================
+
+# --- 排程時間（24h 格式，台灣時區）---
+schedule:
+  pre_market: "08:50"       # 盤前選股
+  market_open: "09:12"      # 開盤下單（零股09:10首撮「後」再掛→拿真實薄帳、避開預撮寬報價；訊號為昨收無急迫性）
+  intraday_check: 5         # 盤中風控掃描間隔（分鐘）
+  market_close: "13:30"     # 收盤（盤中監控只在 market_open~market_close 之間動作）
+  post_market: "14:00"      # 盤後報表
+
+# --- 資料設定 ---
+data:
+  finmind_sleep: 0.5        # FinMind API 請求間隔（秒）
+  finmind_retry: 3          # 最大重試次數
+  scan_workers: 6           # TA 掃描並發數（平行抓 FinMind；太高會觸發限流，6 為平衡點）
+  cache_days: 1             # 本地資料快取天數
+  raw_data_path: "./data/raw"
+  processed_data_path: "./data/processed"
+
+# --- 風控設定 ---
+risk:
+  daily_loss_limit: -0.02   # 單日虧損上限（總資金 -2% 全停機）
+  consecutive_loss_halt: 3  # 連虧 N 筆暫停，等人工審核
+  emergency_exit_on_halt: false  # 熔斷時是否自動市價出場
+
+# --- 券商設定 ---
+broker:
+  mode: "paper"              # paper（本地模擬撮合）/ shioaji（永豐實盤，需開戶+API key）
+  paper_initial_cash: 100000  # 模擬盤初始資金（2026-06-10 由 7 萬升 10 萬；重啟前須刪 data/processed/paper_account.json 才生效）
+
+# --- 通知設定 ---
+notify:
+  provider: "line"           # 主推播：line（Messaging API push）/ telegram
+  backup: "discord"          # 備援（主推超額或失敗時）：discord / telegram / none
+  daily_cap: 8               # 主推播每日上限，超過自動轉備援
+
+# --- 日誌設定 ---
+logging:
+  level: "INFO"             # DEBUG / INFO / WARNING / ERROR
+  rotation: "1 day"         # 日誌輪轉頻率
+  retention: "30 days"      # 保留天數
+  log_path: "./logs"

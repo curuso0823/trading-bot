@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────
+# 分階段 / 脆弱依賴 —— 到該 Phase 才裝，逐項驗證（避免一次性整包炸掉）
+# 先確保 requirements.txt 的核心（含 numpy<2）已就位。
+# ─────────────────────────────────────────────────────────────
+
+# ── Phase 3：回測 & 績效 ──
+# vectorbt 1.0.0 實測可裝（numba 0.65.1 + scipy 1.17 + sklearn），與 numpy<2/pandas2.1 相容。
+# 注意：1.0 的 from_signals 有 sl_stop/tp_stop/init_cash/cash_sharing，但「無」時間停損(td_stop)，
+#       持有天數上限需自做 exit 訊號。fees 為單一費率（非 buy/sell dict）。
+vectorbt==1.0.0
+# quantstats / optuna 到 B4 再裝（quantstats 常 pin 舊 pandas，需單獨處理）
+quantstats>=0.0.62
+optuna>=3.4.0
+
+# ── Phase 4：自動下單（Shioaji 開戶審查通過後）──
+shioaji>=1.0.0
+
+# ── Phase 5：通知 ──
+python-telegram-bot>=20.0
+
+# ── 開發 / 測試 ──
+pytest>=8.0

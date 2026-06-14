@@ -1,0 +1,26 @@
+# systemd 服務檔：讓 bot 在 GCP VM 24h 常駐、開機自動啟動、崩潰自動重啟。
+# 安裝：見 DEPLOY.md。請把 YOUR_USER 換成你的 VM 使用者名稱。
+#
+# sudo cp deploy/trading-bot.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl enable --now trading-bot
+# 查看：sudo systemctl status trading-bot ；即時日誌：journalctl -u trading-bot -f
+
+[Unit]
+Description=Taiwan Stock Trading Bot (paper)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/trading-bot
+ExecStart=/home/YOUR_USER/trading-bot/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=30
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONUTF8=1
+# 排程時區由程式內 APScheduler 以 Asia/Taipei 處理，VM 本身時區無妨
+
+[Install]
+WantedBy=multi-user.target

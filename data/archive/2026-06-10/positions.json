@@ -1,0 +1,35 @@
+{
+  "5880": {
+    "stock_id": "5880",
+    "entry_price": 23.89,
+    "quantity": 879,
+    "entry_date": "2026-06-10",
+    "reason": "站上MA20(23.0) | 量比1.8x | RSI65 | 外資買超22222068張 | 投信買超 | 融資乾淨",
+    "score": 4.0,
+    "last_price": 23.85,
+    "peak_price": 23.9,
+    "trail_pct": 0.08
+  },
+  "2884": {
+    "stock_id": "2884",
+    "entry_price": 34.1,
+    "quantity": 431,
+    "entry_date": "2026-06-10",
+    "reason": "站上MA20(32.0) | 量比1.6x | RSI69 | 外資買超39677275張 | 投信買超 | 融資乾淨",
+    "score": 4.0,
+    "last_price": 33.75,
+    "peak_price": 34.1,
+    "trail_pct": 0.09
+  },
+  "2892": {
+    "stock_id": "2892",
+    "entry_price": 30.7,
+    "quantity": 335,
+    "entry_date": "2026-06-10",
+    "reason": "站上MA20(28.5) | 量比1.5x | RSI69 | 外資買超64068049張 | 投信買超 | 融資乾淨",
+    "score": 3.0,
+    "last_price": 30.55,
+    "peak_price": 30.8,
+    "trail_pct": 0.08957845433255274
+  }
+}

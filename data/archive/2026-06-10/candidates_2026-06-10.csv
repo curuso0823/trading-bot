@@ -1,0 +1,4 @@
+﻿stock_id,date,close,ma20,vol_ratio,rsi14,ma_slope,cond_above_ma,cond_ma_up,cond_vol_surge,cond_rsi_ok,trail_pct,size_pct,foreign_score,trust_score,margin_score,short_penalty,chip_score,foreign_net,reason
+5880,2026-06-09,23.85,22.9525,1.8,64.6,0.075,True,True,True,True,0.08,0.3,2.0,1.0,1.0,0.0,4.0,22222068.0,站上MA20(23.0) | 量比1.8x | RSI65 | 外資買超22222068張 | 投信買超 | 融資乾淨
+2884,2026-06-09,34.2,31.9675,1.63,68.6,0.193,True,True,True,True,0.09,0.3,2.0,1.0,1.0,0.0,4.0,39677275.0,站上MA20(32.0) | 量比1.6x | RSI69 | 外資買超39677275張 | 投信買超 | 融資乾淨
+2892,2026-06-09,30.5,28.5,1.54,68.6,0.023,True,True,True,True,0.08957845433255274,0.3,2.0,1.0,1.0,-1.0,3.0,64068049.0,站上MA20(28.5) | 量比1.5x | RSI69 | 外資買超64068049張 | 投信買超 | 融資乾淨
