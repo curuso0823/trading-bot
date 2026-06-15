@@ -108,7 +108,7 @@ class PositionManager:
     def __init__(self):
         self.cfg = load_config()
         # #11：最多同時持倉檔數改讀 config（與 RiskGuard/回測同源，避免寫死漂移）
-        self.max_positions = int(self.cfg.get("entry", {}).get("max_positions", 3))
+        self.max_positions = int(self.cfg.get("entry", {}).get("max_positions", 6))
         self._positions: dict[str, dict] = {}
         self._load()
 

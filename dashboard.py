@@ -67,8 +67,8 @@ def load_cfg() -> dict:
         "trailing": exit_.get("trailing_stop_pct", 0.12),
         "use_trailing": exit_.get("use_trailing", True),
         "stop_loss": exit_.get("stop_loss_pct", -0.05),
-        "max_positions": entry.get("max_positions", 3),
-        "initial_cash": broker.get("paper_initial_cash", 300_000),
+        "max_positions": entry.get("max_positions", 6),
+        "initial_cash": broker.get("paper_initial_cash", 100_000),
         "mode": broker.get("mode", "paper"),
         "odd_slip_assumed": trading.get("odd_lot_slippage", 0.0015),
     }

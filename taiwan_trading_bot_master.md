@@ -4,8 +4,13 @@
 > 1. 策略概覽與設計決策  
 > 2. Implementation Plan（5 個 Phase）  
 > 3. 五層架構的資源選用與規則  
-> 4. 完整目錄結構  
-> 5. 所有 18 個檔案的完整程式碼  
+> 4. 完整目錄結構（**現況**）  
+> 5. 附錄 A：初版完整程式碼快照（歷史參考）／附錄 B：初版從零重建指示（歷史）  
+
+> ⚠️ **本文件是「初版設計藍圖」，含當時的 config 與程式碼快照。策略與實作此後已大幅演進**
+> （移動停損/ATR、vol_target 配重、regime 濾鏡、投降感知 capitulation、零股交易、watchlist、
+> 並倉上限 3→6…）。**最新真相一律以 `config/strategy.yaml` + `src/` 為準**；本文內嵌的 config/
+> 程式碼片段僅供設計脈絡參考，可能與現況不符。文中策略骨架值已校準至現行版本，但內嵌完整原始碼未逐行同步。
 
 ---
 
@@ -14,7 +19,7 @@
 **策略類型**：混合策略 — 技術指標初篩 + 籌碼確認  
 **交易市場**：台股（上市 + 上櫃）  
 **主要語言**：Python  
-**資金規模**：小額試跑（5 萬以下），最多同時持倉 3 檔  
+**資金規模**：小額試跑（5 萬以下），最多同時持倉 6 檔  
 **開發工具**：Claude Code（代理式開發，時程以小時計）
 
 ### 核心選股邏輯
@@ -139,6 +144,12 @@
 | 年化報酬率 | ≥ 10% |
 | 交易筆數 | ≥ 50 筆 |
 
+> **「交易筆數 ≥ 50 筆」是統計信心的唯一來源，且在「歷史回測」上量測，不靠實盤/模擬盤累積。**
+> 回測一次跑 8 年（2018–2025）即遠超門檻：全期 222 筆、config out-of-sample(2023–24) 60 筆、
+> 近兩年 68 筆，每個視窗都 ≥ 50（見 `notebooks/gate_check.py`）。
+> 因此 live 端**不需要、也不應該等實盤交易攢到 50 筆**——live 是低頻趨勢策略（降頻、抱贏家、
+> 並倉上限 6、常有 0 候選日），那是設計而非缺陷。實盤年化約 10 筆，硬等 50 筆要數年且無意義。
+
 ---
 
 ### Phase 4：自動化下單系統建構（9–11 h）
@@ -147,7 +158,7 @@
 |---|------|------|
 | 4.1 | 永豐 Shioaji 串接（登入/查餘額/查持倉，API key 存 .env）| 1.5 h |
 | 4.2 | OrderManager（買/賣/漲停重試/部分成交/委託逾時取消）| 2.5 h |
-| 4.3 | PositionManager（持倉追蹤，本地 JSON 持久化，最多 3 檔）| 2 h |
+| 4.3 | PositionManager（持倉追蹤，本地 JSON 持久化，最多 6 檔）| 2 h |
 | 4.4 | RiskGuard（停損/日虧損上限/連虧熔斷/倉位上限）| 2 h |
 | 4.5 | APScheduler 排程整合（盤前選股→開盤下單→盤中監控→盤後報表）| 1.5 h |
 
@@ -156,9 +167,15 @@
 2. 單日虧損 > 總資金 −2% → 全停機
 3. 連虧 3 筆 → 暫停等人工審核
 4. 單股倉位 ≤ 總資金 30%
-5. 持倉數 ≤ 3 檔
+5. 持倉數 ≤ 6 檔
 
-**Gate 條件：** 模擬盤連跑 10 個交易日（2 週）無異常才切實盤
+**Gate 條件：** 模擬盤連跑 10 個交易日（2 週）無異常才切實盤。
+
+> **此關驗證「系統運轉正確」，不重新驗證「策略 alpha」——後者已由 Phase 3 回測 50+ 筆完成。**
+> 故此 gate **不要求任何最低交易筆數**（可能整段期間僅 0–數筆進場，甚至全空手，皆算通過）。
+> 「無異常」指標：① 排程準點（盤前選股→開盤下單→盤中監控→盤後報表全跑完）、
+> ② 下單/成交回報與本地持倉/現金對得起來、③ RiskGuard 該觸發時有觸發（停損/熔斷/倉位上限）、
+> ④ 無未捕捉例外或資料拉取失敗導致用過期名單下單。重點是流程穩定，不是交易頻率。
 
 ---
 
@@ -273,73 +290,88 @@
 
 ```
 trading_bot/
-├── .env.example              # API keys 範本（實際使用時複製為 .env）
-├── .env                      # 實際 keys（不可上傳 git）
+├── pyproject.toml            # 依賴與專案設定（核心 runtime + research/broker/telegram/dev extras）
+├── .env.example              # API keys 範本（複製為 .env）
+├── .env                      # 實際 keys（git 忽略）
 ├── README.md
-├── requirements.txt
-├── main.py                   # 排程主程式入口
+├── main.py                   # 排程主程式入口（APScheduler 常駐）
+├── dashboard.py              # 本地監控儀表板（http.server）
+├── backtest_gui.py           # 回測 GUI（http.server，用 capped_sim 引擎）
 │
 ├── config/
-│   ├── strategy.yaml         # 策略參數（所有數字都在這裡調）
-│   └── settings.yaml         # 系統設定（排程時間/日誌/風控）
+│   ├── strategy.yaml         # 策略參數（單一真相來源：TA/籌碼/進出場/regime/capitulation/零股…）
+│   └── settings.yaml         # 系統設定（排程/資料/風控/券商/通知/日誌）
 │
 ├── src/
-│   ├── __init__.py
 │   ├── data/
-│   │   ├── __init__.py
-│   │   ├── fetcher.py        # FinMindFetcher + FugleFetcher
-│   │   └── universe.py       # 上市/上櫃股票池管理
+│   │   ├── fetcher.py        # FinMind（raw requests）+ Fugle 報價
+│   │   └── universe.py       # 上市/上櫃股票池
 │   ├── signals/
-│   │   ├── __init__.py
-│   │   ├── tech_signal.py    # TechSignal（TA 初篩）
-│   │   ├── chip_signal.py    # ChipAnalyzer + MarginAnalyzer
-│   │   └── score_engine.py   # ScoreEngine（串接兩層的核心）
+│   │   ├── tech_signal.py    # TA 初篩（MA/RSI/量比）
+│   │   ├── chip_signal.py    # 籌碼（外資/投信/融資券）
+│   │   ├── capitulation.py   # 投降感知 regime（真底/假反彈分類器）
+│   │   └── score_engine.py   # 串接 TA+籌碼，輸出候選（live 選股核心）
 │   ├── backtest/
-│   │   ├── __init__.py
-│   │   └── backtester.py     # TaiwanBacktester（Vectorbt 封裝）
+│   │   ├── backtester.py     # TaiwanBacktester（vectorbt 全訊號研究引擎）
+│   │   ├── capped_sim.py     # 小資金 top-N 集中策略回測（忠實重現 live）
+│   │   └── signal_builder.py # 歷史訊號建構（block_only regime + TA + 籌碼）
 │   ├── execution/
-│   │   ├── __init__.py
-│   │   ├── broker_client.py  # BrokerClient（Shioaji 封裝）
-│   │   └── order_manager.py  # OrderManager + PositionManager
+│   │   ├── broker_factory.py # paper / shioaji 切換
+│   │   ├── broker_client.py  # 永豐 Shioaji 封裝
+│   │   ├── paper_broker.py   # 本地模擬撮合
+│   │   ├── order_manager.py  # 下單/查詢/取消 + 部位追蹤
+│   │   └── odd_lot_fill.py   # 零股成交不確定性模型
 │   ├── risk/
-│   │   ├── __init__.py
-│   │   └── risk_guard.py     # RiskGuard（風控守門員）
+│   │   └── risk_guard.py     # 風控（移動停損/日虧損/連虧熔斷/倉位上限）
 │   ├── notify/
-│   │   ├── __init__.py
-│   │   └── telegram_bot.py   # TelegramNotifier
+│   │   ├── notify_manager.py # 推播路由（主/備援/每日上限）
+│   │   ├── notify_factory.py
+│   │   ├── line_bot.py       # LINE（主推）
+│   │   ├── discord_bot.py    # Discord（備援）
+│   │   └── telegram_bot.py   # Telegram
 │   └── utils/
-│       ├── __init__.py
-│       ├── logger.py          # setup_logger + log_trade
-│       └── helpers.py         # load_config / calc_trade_cost / 日期工具
+│       ├── helpers.py        # load_config / 成本 / trailing / sizing 同口徑工具
+│       ├── logger.py
+│       ├── sectors.py        # 類股分類
+│       ├── singleton.py      # fcntl 單例鎖（防雙開）
+│       ├── slippage_logger.py# 滑價量測
+│       └── eod_archive.py    # 盤後歸檔
 │
-├── data/
-│   ├── raw/                  # FinMind 原始資料快取
-│   └── processed/            # 候選清單 CSV / 回測報告 / 持倉 JSON
+├── deploy/                   # 部署
+│   ├── DEPLOY.md / DEPLOY_MACOS.md / DEPLOY_WINDOWS.md
+│   ├── requirements-lock.txt # 可重現性鎖檔（由 pyproject 環境 freeze）
+│   ├── macos/                # launchd plist + install/start/stop/uninstall
+│   └── trading-bot.service   # GCP systemd unit
 │
+├── data/                     # raw 快取 / processed 狀態 / archive 歷史（git 忽略）
 ├── logs/                     # 交易日誌（自動輪轉）
-│
-├── notebooks/                # Jupyter 驗證用（Phase 0 資料探索）
-│
-└── tests/                    # 單元測試（之後補充）
+├── notebooks/                # 研究/驗證腳本（用 backtester，需 .[dev]）
+└── tests/                    # pytest（81 項）
 ```
+> 註：各套件目錄含 `__init__.py`（省略未列）。依賴定義見 `pyproject.toml`（已取代舊的 requirements*.txt）。
 
 **模組依賴關係：**
 ```
 main.py
-  ├── ScoreEngine          ← 選股核心（唯一入口）
-  │     ├── FinMindFetcher
-  │     ├── TechSignal
-  │     └── ChipAnalyzer / MarginAnalyzer
-  ├── BrokerClient         ← 唯一接觸 shioaji 的地方
-  ├── OrderManager         ← 下單（呼叫 BrokerClient）
-  ├── PositionManager      ← 部位狀態（獨立，不呼叫 broker）
-  ├── RiskGuard            ← 風控（不下單，只判斷）
-  └── TelegramNotifier     ← 通知（完全被動，只推播）
+  ├── ScoreEngine            ← 選股核心（TA + 籌碼 + capitulation regime 閘門）
+  │     ├── FinMind / Fugle fetcher
+  │     ├── TechSignal / ChipAnalyzer
+  │     └── Capitulation     ← regime（block_only 擋假反彈）
+  ├── broker_factory → PaperBroker / BrokerClient(Shioaji)
+  ├── OrderManager           ← 下單 + 部位追蹤（呼叫 broker）
+  ├── RiskGuard              ← 風控（移動停損/熔斷，只判斷不下單）
+  └── notify_manager → LINE(主) / Discord(備援) / Telegram
 ```
 
 ---
 
-## 五、完整程式碼
+## 附錄 A：初版完整程式碼快照（歷史參考 — 與現況可能不符）
+
+> ⚠️ 以下為**專案初版（從零生成時）的 config 與程式碼快照**，保留作設計脈絡參考。
+> 程式碼此後已大幅演進，**最新一律以 `src/` 與 `config/` 為準**；本附錄不逐行同步。
+> 例如下方 `### requirements.txt` 區塊已不存在於專案（改用 `pyproject.toml`）、
+> `config/strategy.yaml` 也缺 regime/capitulation/ATR 移動停損/vol_target/零股等後加章節、
+> 檔案清單亦非現況（現況見上方「四、完整目錄結構」）。
 
 ### `requirements.txt`
 
@@ -434,16 +466,18 @@ chip_scoring:
   short_surge_ratio: 0.2    # 融券增加 20% 視為急增
   min_score: 2              # 進入候選清單最低分
 
-# --- 進出場規則 ---
+# --- 進出場規則 ---（核心欄位節錄；完整含 ATR 移動停損、vol_target 配重、regime、
+#     投降感知 capitulation、watchlist、零股交易等，見 config/strategy.yaml 單一真相來源）
 entry:
-  max_positions: 3          # 最多同時持倉檔數
-  position_size_pct: 0.30   # 單股最大佔總資金比例
+  max_positions: 6          # 最多同時持倉檔數
+  position_size_pct: 0.30   # 單股最大佔總資金比例（上限；實際由 vol_target 反比配重）
 
 exit:
-  stop_loss_pct: -0.05      # 停損 -5%（硬性，優先執行）
-  take_profit_pct: 0.10     # 停利 +10%
-  max_hold_days: 15         # 最長持有天數
-  ma_break_exit: true       # 跌破 MA20 出場
+  stop_loss_pct: -0.05      # 初始硬停損（use_trailing=true 時改由 ATR 移動停損接手）
+  take_profit_pct: null     # 不設停利上限，讓贏家續抱
+  max_hold_days: 60         # 最長持有天數（趨勢需時間）
+  ma_break_exit: false      # 關閉跌破 MA20 出場（過度交易主因）
+  use_trailing: true        # 啟用 ATR 移動停損（抱贏家核心）
 
 # --- 交易成本（台股）---
 cost:
@@ -1893,7 +1927,10 @@ if __name__ == "__main__":
 
 ---
 
-## 六、給 Claude Code 的工作指示
+## 附錄 B：初版「從零重建」工作指示（歷史）
+
+> ⚠️ 以下是當初「依本文件從零生成整個專案」用的指示。專案早已建好並大幅演進，**僅供歷史參考**。
+> 實際安裝/部署請看 `README.md` 與 `deploy/`（依賴一律用 `pyproject.toml`）。
 
 ### 第一步：建立目錄結構
 
@@ -1914,7 +1951,7 @@ touch trading_bot/src/{data,signals,backtest,execution,risk,notify,utils}/__init
 ```bash
 cd trading_bot
 python -m venv venv && source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e .                                 # 核心 runtime；回測加 pip install -e ".[dev]"
 cp .env.example .env
 # 填入 FINMIND_TOKEN 後執行驗證
 python -c "

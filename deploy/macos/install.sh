@@ -10,6 +10,20 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LA_DIR="$HOME/Library/LaunchAgents"
 UID_NUM="$(id -u)"
 
+# ── 前置檢查：.venv 與核心依賴必須就位（launchd 會跑 .venv/bin/python main.py）──
+# 依賴來源為 pyproject.toml；缺則擋下安裝，避免留下會在 08:30 崩潰的排程。
+PY="$PROJECT_DIR/.venv/bin/python"
+if [ ! -x "$PY" ]; then
+    echo "❌ 找不到 $PY" >&2
+    echo "   先建 venv 並裝依賴： python3.11 -m venv .venv && .venv/bin/python -m pip install -e ." >&2
+    exit 1
+fi
+if ! "$PY" -c "import pandas, apscheduler, yaml, fugle_marketdata" 2>/dev/null; then
+    echo "❌ .venv 缺核心依賴。請執行： .venv/bin/python -m pip install -e ." >&2
+    exit 1
+fi
+echo "✅ 前置檢查通過：.venv + 核心依賴就位"
+
 mkdir -p "$LA_DIR" "$PROJECT_DIR/logs"
 chmod +x "$SCRIPT_DIR/start_bot.sh" "$SCRIPT_DIR/stop_bot.sh"
 

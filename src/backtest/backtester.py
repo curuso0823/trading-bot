@@ -1,7 +1,9 @@
 """
 backtest/backtester.py
-Vectorbt 台股回測框架
-正確處理：交易成本、漲跌停、T+1 延遲、Walk-forward 分析
+Vectorbt 台股回測框架（全訊號向量化引擎，研究/參數掃描用；~25 支 notebook 與
+helpers/risk_guard「同口徑」對齊的參考實作）。
+正確處理：交易成本、漲跌停、T+1 延遲、Walk-forward、ATR 移動停損、vol_target 配重、regime 出場。
+※ 此引擎不模擬「並倉上限(top-N 集中)」——忠實重現 live 集中策略的回測見 backtest/capped_sim.py。
 """
 import pandas as pd
 import numpy as np
@@ -217,13 +219,14 @@ class TaiwanBacktester:
     def _build_exit_signals(self, close_px: pd.DataFrame,
                             entries: pd.DataFrame) -> pd.DataFrame:
         """
-        出場訊號矩陣：跌破 MA20 + 持有天數上限。
-        （停損 -5% / 停利 +10% 由 from_signals 的 sl_stop/tp_stop 內建處理）
+        出場訊號矩陣：跌破 MA20（ma_break_exit）+ 持有天數上限（max_hold_days）。
+        （價格型停損/停利不在此矩陣：硬停損或 ATR 移動停損走 from_signals 的 sl_stop/sl_trail、
+         停利走 tp_stop；現行 config = 移動停損開、不設停利。）
         """
         exits = pd.DataFrame(False, index=close_px.index, columns=close_px.columns)
 
         # 跌破 MA20 出場
-        if self.exit_cfg.get("ma_break_exit", True):
+        if self.exit_cfg.get("ma_break_exit", False):
             ma = close_px.rolling(self.ta_cfg["ma_period"]).mean()
             exits = exits | (close_px < ma)
 

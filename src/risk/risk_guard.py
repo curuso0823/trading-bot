@@ -17,7 +17,7 @@ class RiskGuard:
     2. 單日虧損 > 總資金 -2% → 全停機
     3. 連虧 3 筆 → 暫停等人工審核
     4. 單股倉位 ≤ 總資金 30%
-    5. 持倉數 ≤ 3 檔
+    5. 持倉數 ≤ 6 檔
     """
 
     DAILY_STATE_FILE = "data/processed/daily_risk_state.json"
@@ -28,7 +28,7 @@ class RiskGuard:
         settings = load_settings()
         self.stop_loss_pct = cfg["exit"]["stop_loss_pct"]             # -0.05
         self.max_position_pct = cfg["entry"]["position_size_pct"]     # 0.30
-        self.max_positions = cfg["entry"]["max_positions"]            # 3
+        self.max_positions = cfg["entry"]["max_positions"]            # 6
         self.daily_loss_limit = settings["risk"]["daily_loss_limit"]  # -0.02
         self.consec_loss_halt = settings["risk"]["consecutive_loss_halt"]  # 3
         # 出場參數（與回測同口徑：趨勢跟隨用移動停損）

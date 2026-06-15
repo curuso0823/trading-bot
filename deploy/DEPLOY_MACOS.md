@@ -8,6 +8,23 @@
 
 ---
 
+## 前置：建 venv + 裝依賴（依賴來源 = `pyproject.toml`）
+
+launchd 只負責「排程啟動」，實際跑的是 `.venv/bin/python main.py`——所以 `.venv` 必須先建好。
+依賴一律由 `pyproject.toml` 提供（核心 runtime **不含 vectorbt**，live 用不到）：
+
+```bash
+cd <專案根目錄>
+python3.11 -m venv .venv               # 必須 Python 3.11（vectorbt/numba/numpy<2 生態）
+.venv/bin/python -m pip install -U pip
+.venv/bin/python -m pip install -e .   # 核心 runtime；要跑回測/測試再 -e ".[dev]"
+```
+
+驗證：`.venv/bin/python -c "import pandas, apscheduler, yaml, fugle_marketdata; print('deps ok')"`
+（下方 `install.sh` 也會自動做這個前置檢查，缺 venv/依賴會直接擋下，不會留下會在 08:30 崩潰的排程。）
+
+---
+
 ## 一鍵安裝
 
 ```bash

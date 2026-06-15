@@ -43,8 +43,8 @@ entry:
 exit:
   # 趨勢跟隨 regime（降頻、抱贏家）：移動停損為主，不設停利上限
   stop_loss_pct: -0.05      # 初始硬停損（use_trailing=false 時使用）
-  take_profit_pct: null     # 不設停利上限，讓贏家續抱（原 0.10）
-  max_hold_days: 60         # 拉長持有上限（原 15，趨勢需時間）
+  take_profit_pct: null     # 不設停利上限，讓贏家續抱
+  max_hold_days: 60         # 拉長持有上限（趨勢需時間）
   ma_break_exit: false      # 關閉跌破 MA20 出場（過度交易主因）
   use_trailing: true        # 啟用移動停損（抱贏家核心）
   trailing_stop_pct: 0.12   # fixed 模式：自波段高點回落 12% 出場
@@ -63,7 +63,7 @@ sizing:
   vol_lookback: 20          # 個股日報酬波動回看交易日
   target_vol_daily: 0.02    # 個股目標日波動(2%)；vol<此→放大配重、vol>此→縮小
   min_position_pct: 0.10    # 單檔配重下限
-  max_position_pct: 0.30    # 單檔配重上限（沿用原 30%，避免單檔過度集中）
+  max_position_pct: 0.30    # 單檔配重上限（避免單檔過度集中）
   # 市場波動曝險縮放：0050 實現波動越高→總曝險越低（純去風險，不加槓桿）
   # 實測：個股 inverse-vol 已把 DD 修進 -14%，此 overlay 無法再降 DD 卻把年化從15.6%拖到13.8%
   # （regime 濾鏡已擋掉最壞大盤段 → overlay 多餘且稀釋報酬）→ 關閉。程式保留，未來可重啟。

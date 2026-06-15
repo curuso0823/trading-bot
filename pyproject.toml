@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taiwan-trading-bot"
+version = "0.1.0"
+description = "台股自動交易系統：技術指標初篩 + 籌碼確認（混合策略）"
+readme = "README.md"
+# ⚠️ 必須 Python 3.11：vectorbt 1.0 / numba 0.65 / numpy<2 / pandas 2.1 的相容組合，
+#    勿用機器預設的 3.14。建 venv：python3.11 -m venv .venv
+requires-python = ">=3.11,<3.12"
+
+# ── 核心 runtime（live 跑 paper/實盤都只需這些；不含 vectorbt/viz）──
+# 生產機（如 GCP e2-micro 1GB RAM）只裝這層：pip install .
+dependencies = [
+    "numpy<2",                  # 勿升 numpy 2（破壞 vectorbt 等舊生態）
+    "pandas==2.1.4",            # 勿升 pandas 3.x
+    "requests>=2.31.0",         # FinMind 以 raw requests 直連
+    "lxml>=5.0",                # pd.read_html 解析上市/上櫃清單（universe.py）
+    "fugle-marketdata>=1.0.0",  # 即時/零股報價
+    "APScheduler>=3.10.0",      # 盤前/開盤/盤中/盤後排程
+    "pytz",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "loguru>=0.7.0",
+    "holidays>=0.50",           # 台股國定假日（is_trading_day）
+]
+
+[project.optional-dependencies]
+# 回測 / 研究：backtester.py（vectorbt）+ ~25 支 notebook + 績效報告 / 參數優化。live 不需要。
+research = ["vectorbt==1.0.0", "quantstats>=0.0.62", "optuna>=3.4.0"]
+# 實盤券商（永豐 Shioaji）：paper 模式不需要，Phase 4 切實盤才裝。
+broker = ["shioaji>=1.0.0"]
+# Telegram 推播：主推為 LINE（line_bot，走 requests 無需額外套件），此為替代/備援。
+telegram = ["python-telegram-bot>=20.0"]
+# 開發 / 測試：含 research + 視覺化（matplotlib/mplfinance 僅 notebook 肉眼驗證用）+ pytest。
+dev = [
+    "taiwan-trading-bot[research]",
+    "pytest>=8.0",
+    "mplfinance>=0.12.10b0",
+    "matplotlib>=3.7.0",
+]
+
+# src/ 為 import 根（from src.xxx import …）；只打包 src，頂層 main.py/dashboard.py 等以 repo 直跑。
+[tool.setuptools.packages.find]
+include = ["src*"]
+namespaces = false

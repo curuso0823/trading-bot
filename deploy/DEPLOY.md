@@ -33,7 +33,7 @@ python3 --version   # 應為 3.11.x
 cd ~/trading-bot
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install --no-cache-dir -r requirements.txt   # --no-cache-dir：1GB RAM 省記憶體
+.venv/bin/pip install --no-cache-dir -e .   # 只裝核心 runtime（不含 vectorbt）；--no-cache-dir：1GB RAM 省記憶體
 ```
 
 ## 5. 填 .env（機密，VM 上手動建）
