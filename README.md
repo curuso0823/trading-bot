@@ -65,4 +65,4 @@ pip install ".[telegram]"       # 用 Telegram 推播才需（主推 LINE 免額
 - Phase 2 完成：ScoreEngine 產出含評分候選清單
 - Phase 3 Gate：Out-of-sample 夏普>1、回撤<15%、50+筆（**回測量測，非實盤累積**）
 - Phase 4 Gate：模擬盤 10 交易日無異常（**不要求最低交易筆數**）
-- Phase 5：實盤上線，初始資金 ≤ 3 萬
+- Phase 5：實盤上線，初始資金 = 10 萬

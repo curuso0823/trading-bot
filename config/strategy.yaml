@@ -1,92 +1,85 @@
 # ==========================================
 # 策略參數 — 所有數字都在這裡調，不改 code
 # ==========================================
+#
+# 本檔＝現行 live 策略的單一真相來源，只列「正在用」的參數。
+# 2026-06-16 重構：已實證否決的選項（過度延伸濾鏡、市場波動曝險縮放、類股分散、
+#   MA60 斜率/大盤 MA20 出場、capitulation 的 amihud/reclaim 豁免/unlock·full 模式/deep_bear 收停損…）
+#   已自本檔移除——這些 code 端皆 .get(預設=關閉)，移除不改變任何行為。其否決理由與數據完整收錄於
+#   taiwan_trading_bot_master.md 第六章「6.9 已否決選項清單」，未來請勿再加回。
+#
+# 註解圖例：⚠️ ＝現行仍在用、但 2026-06-16 診斷點名「待 v2 改善」的設定（詳見 master 第六章）。
+#
+# 【2026-06-16 診斷重點】（完整見 master 第六章 + docs/IMPROVEMENT_PLAN_v2.md）
+#   全期(2018–25 / 100k / 零股) 年化 12.7% / Sharpe 1.16 / DD -16% / PF 1.97 / 222 筆；
+#   對照 0050 買進持有 年化 20% / Sharpe 1.01 / DD -34% / 總報酬 309%（策略僅 152%）。
+#   ① 交易頻率天花板＝「6 格並倉 + 抱贏家」，非濾網/選股範圍（放寬濾網不增交易、加大並倉才增）。
+#   ② 擴大選股 35→53 檔反而全面變差。 ③ 量比≥1.5 是每日 0 候選的主因。
+#   ④ 2024 大多頭只 +7.2%（0050 +49%）＝ATR 停損對高波動股太緊。 改善路線見 master 第六章 Phase 6–11。
+# ────────────────────────────────────────────────────────────────────────────────
 
-# --- TA 初篩條件 ---
+# --- TA 初篩條件（站上向上 MA20 + 量能放大 + RSI 健康，四條件 AND）---
 ta_filter:
   ma_period: 20             # 均線週期
-  ma_slope_days: 3          # MA 向上斜率計算天數
-  volume_ratio_min: 1.5     # 量比最小值（當日量 / 20日均量）
+  ma_slope_days: 3          # MA20 向上斜率計算天數
+  volume_ratio_min: 1.5     # 量比門檻（當日量 / 20日均量）
+  # ⚠️ 選股漏斗最大瓶頸：全市場僅 14% stock-day 通過＝每日 0 候選主因。但放寬只增訊號不增交易
+  #    （被 6 格並倉綁死）且降品質 → 維持 1.5。真正待解的是並倉/出場，見 master 第六章 Phase 6/7。
   rsi_period: 14
   rsi_min: 50               # RSI 下限
-  rsi_max: 80               # RSI 上限（避免超買）
-  # 過度延伸濾鏡（task3 實證否決，預設 null=關閉，程式保留）：
-  #   max_ext_pct=離MA20乖離上限、max_vol_pct=20日已實現波動上限。
-  #   兩者都「不」改善 2021(每閾值反而 -0.1→-3~-6%)、砍傷 2020/2025 復甦年(復甦初期天然高乖離/高波動)、
-  #   全期 Sharpe 只降不升(0.90→0.73~0.87)。結論：2021/2018 弱點是出場洗單/時機，非進場過度延伸 → entry 濾鏡修不了。
-  max_ext_pct: null
-  max_vol_pct: null
+  rsi_max: 80               # RSI 上限（避免追超買）
 
-# --- 籌碼評分條件 ---
+# --- 籌碼評分條件（加分制，總分 ≥ min_score 才入候選）---
 chip_scoring:
   foreign_buy_days: 3       # 外資連買計算天數
   foreign_buy_score: 2      # 外資買超得分
   trust_buy_days: 5         # 投信連買計算天數
   trust_buy_score: 1        # 投信買超得分
-  margin_ratio_max: 0.15    # 融資使用率上限（15% 以下加分）
+  margin_ratio_max: 0.15    # 融資使用率上限（15% 以下＝籌碼乾淨，加分）
   margin_clean_score: 1     # 融資乾淨得分
   short_surge_penalty: -1   # 融券急增扣分
   short_surge_days: 3       # 融券急增判斷天數
   short_surge_ratio: 0.2    # 融券增加 20% 視為急增
   min_score: 2              # 進入候選清單最低分
 
-# --- 進出場規則 ---
+# --- 進場規則 ---
 entry:
-  # 並倉上限演進：3(猜值)→5(2026-06-10 38檔全期掃描峰)→6(2026-06-10 晚, 35檔新選單+前瞻性原則)。
-  #   mp=6 @35檔: AI窗23-25 21.0%/Sharpe1.60/DD-13.8% 全Gate PASS(vs mp5 14.5%/1.24)、
-  #   近兩年24-25 15.1%/1.22 PASS、2022熊 -7.0%(比 mp5 -8.1% 淺)。
-  #   代價：全期18-25 DD -16.0% 破 -15% 線 1pp(來自 2018-22 AI 股未起飛段)→依前瞻性原則接受。
-  #   mp=7 否決(AI窗DD-16.6)。機制：第6個名額主要流向電子/AI(FIN持平27→27、EMS 12→16、SEMI 13→15)。
   max_positions: 6          # 最多同時持倉檔數
-  position_size_pct: 0.30   # 單股最大佔總資金比例
+  # ⚠️ 這是交易頻率的「真正天花板」（非濾網/選股範圍）：同 35 檔 6→10→15→20，交易/年 27.8→43.6→61.5→73.8，
+  #    但單純加大並未改善 Sharpe、還惡化 DD → 要加大必須同時改「選股品質 + 出場」，見 master 第六章 Phase 6。
+  position_size_pct: 0.30   # 單股最大佔總資金比例（flat 模式用；vol_target 模式由 sizing 控）
 
+# --- 出場規則（趨勢跟隨：移動停損為主、不設停利、抱贏家）---
 exit:
-  # 趨勢跟隨 regime（降頻、抱贏家）：移動停損為主，不設停利上限
-  stop_loss_pct: -0.05      # 初始硬停損（use_trailing=false 時使用）
+  stop_loss_pct: -0.05      # 初始硬停損（僅 use_trailing=false 時使用）
   take_profit_pct: null     # 不設停利上限，讓贏家續抱
-  max_hold_days: 60         # 拉長持有上限（趨勢需時間）
-  ma_break_exit: false      # 關閉跌破 MA20 出場（過度交易主因）
+  max_hold_days: 60         # 持有上限（交易日）
+  ma_break_exit: false      # 不採「跌破 MA20 出場」（過度交易主因）
   use_trailing: true        # 啟用移動停損（抱贏家核心）
   trailing_stop_pct: 0.12   # fixed 模式：自波段高點回落 12% 出場
-  # A1：移動停損寬度模式 fixed（固定%）/ atr（隨個股波動自適應，寬度=atr_mult×ATR%）
-  # 採用 atr（緊收 max=0.10）：逆年驗證較全天候——2024/2025 多樣情境贏 fixed、2023 小輸；
-  # 寬版(max0.18)逆年證實非穩健(2023/24都輸)已否決。live 出場由 risk_guard 用 per-position ATR 寬度。
-  trailing_mode: "atr"
+  trailing_mode: "atr"      # 移動停損寬度模式：fixed（固定%）/ atr（隨個股波動自適應）
   atr_period: 14
   atr_mult: 4.5             # 停損寬度 = atr_mult × ATR%（波動大→寬、小→緊）
   atr_trail_min: 0.08       # 寬度下限
-  atr_trail_max: 0.09       # 寬度上限（7萬分年微調：Sharpe峰、0.08-0.09高原；全期Sharpe1.43/DD-15.9%、2024:1.56）
+  atr_trail_max: 0.09       # 寬度上限
+  # ⚠️ ATR 8–9% 對高波動電子/AI 股偏緊 → 2024 大多頭只 +7.2%（0050 +49%）＝被洗出後難追回，是
+  #    「趨勢策略卻在大多頭年慘敗」的主因之一。v2 待修出場（自適應寬度 / 停損後重進場），見 master 第六章 Phase 7。
 
-# --- 部位規模（方式A：波動度反比配重 + 市場波動曝險縮放）---
+# --- 部位規模（方式A：波動度反比配重）---
 sizing:
   method: "vol_target"      # flat（固定 position_size_pct）/ vol_target（波動度反比）
   vol_lookback: 20          # 個股日報酬波動回看交易日
   target_vol_daily: 0.02    # 個股目標日波動(2%)；vol<此→放大配重、vol>此→縮小
   min_position_pct: 0.10    # 單檔配重下限
   max_position_pct: 0.30    # 單檔配重上限（避免單檔過度集中）
-  # 市場波動曝險縮放：0050 實現波動越高→總曝險越低（純去風險，不加槓桿）
-  # 實測：個股 inverse-vol 已把 DD 修進 -14%，此 overlay 無法再降 DD 卻把年化從15.6%拖到13.8%
-  # （regime 濾鏡已擋掉最壞大盤段 → overlay 多餘且稀釋報酬）→ 關閉。程式保留，未來可重啟。
-  market_vol_scaling: false
-  market_vol_lookback: 20   # 大盤(0050)波動回看
-  market_vol_target: 0.011  # 大盤目標日波動(~0050長期中位, ≈17.5%年化)
-  exposure_floor: 0.40      # 曝險縮放下限（高波動時最多降到 40%）
-  exposure_cap: 1.00        # 曝險縮放上限（=1，不放大槓桿）
 
 # --- 選股範圍（live 每日掃描）---
-# 免費 FinMind 600 req/日：全市場 1980 檔 × ≥1 請求 會爆額度 → 預設只掃驗證過的 watchlist。
-# full 模式需付費 FinMind（否則 max_scan 截斷保護）。watchlist = b3 回測驗證的流動性標的。
 universe:
-  mode: "watchlist"          # watchlist（只掃下方清單）/ full（全市場，需付費 FinMind）
+  mode: "watchlist"          # watchlist（只掃下方清單，免費 FinMind 額度友善）/ full（全市場，需付費 FinMind）
   max_scan: 150              # full 模式安全上限（保護免費額度）
-  # 2026-06-10 選單改版 38 → 35（user 兩階段決策）：
-  # ①加入 AI 供應鏈 4 檔（3017奇鋐/8299群聯/2449京元電/8210勤誠）：近3年 CAGR 80-145% 全≥0050(52%)，
-  #   分窗回測 AI窗23-25 全Gate PASS（22.5%/1.63/DD-12.8%）、近兩年24-25 最佳。
-  #   +8/+15 版破 DD Gate 否決；信驊(16,840元/股)超過 100k 最低配重預算排除。
-  # ②前瞻性除名 7 檔 AI 時代拖後腿股（user：選單供未來交易用，市場結構已異於 19-21，
-  #   不以 18-25 全期利潤最大化為準）：大立光3008(CAGR28%)/瑞昱2379(24%)/矽力6415(13%)/
-  #   聯詠3034(9%,近1年負)/宏碁2353(7%)/和碩4938(13%)/技嘉2376(16%)——全數大幅落後 0050。
-  # regime 廣度代理仍釘選原 38（capitulation.universe_list），測量基準不隨選單漂移。
+  # ⚠️ 下方 watchlist 為人工後見之明選股（2026-06 用「近3年CAGR」加 AI 贏家、剔落後股）＝倖存者偏誤：
+  #    回測好看但前瞻績效恐打折；且擴大選股不增交易頻率、反稀釋集中策略品質。
+  #    v2 改 point-in-time 規則化動態選股並 walk-forward 驗證，見 master 第六章 Phase 9。
   watchlist: ["2330","2454","2303","2308","3711","2337",
               "2317","2382","2357","3231","2356",
               "2881","2882","2891","2886","2884","2885","2892","5880",
@@ -94,45 +87,20 @@ universe:
               "2603","2609","2615","2412","2912","1216",
               "3017","8299","2449","8210"]
 
-# --- 選股分散（方式A2：同類股同時進場上限）---
-# 實測 BUST：DD 是 2025 全市場系統性修正（market-beta），非類股集中度問題 →
-# 分散反而把資金推去弱勢類股，DD 變差(-14.1%→-16.7%)。關閉。程式保留備用。
-selection:
-  sector_cap_enabled: false
-  max_per_sector: 2         # 同一類股(半導體/金融/航運…)同時進場最多檔數
-
-# --- 大盤趨勢濾鏡（regime filter，降系統性回撤）---
+# --- 大盤趨勢濾鏡（regime）---
 regime:
   enabled: true
   proxy: "0050"             # 大盤趨勢代理（0050 近似加權指數，免費層可取）
-  ma_period: 60             # 進場：代理收盤站上 60 日均線（多頭）才允許進場
-  # MA60 斜率濾鏡：要求 MA60 本身向上。實證為 WASH（救2022 -27→-18.7%，卻賠在2025 +2.4→-9.1%、
-  # 2021 -0.1→-11.3%；全期Sharpe 0.80≈baseline 0.81）→ 鈍器分不出「熊市續行」vs「V彈真反轉」→ 不採用。
-  # 程式/選項保留；真正的修法是複合「反轉確認分數」。見 [[taiwan-bot-bear-defense]]
-  require_ma_slope: false   # 進場加 MA60 斜率向上條件（實證 wash，預設關閉）
-  ma_slope_days: 10         # MA60 斜率回看：MA60 > MA60 N日前 = 向上
-  exit_on_risk_off: false   # 大盤轉弱出清（實測 MA20 會過度洗單反效果，關閉）
-  exit_ma_period: 20        # 出場：代理跌破 N 日均線即全出
+  ma_period: 60             # 進場：代理收盤站上 60 日均線才算多頭
 
-# --- 投降感知 regime（真底/假反彈分類器）---
-# 設計依據：4 篇 quant paper + 本地實測（vol20 +0.33 最強、外資單獨 -0.06 無效）。見 [[taiwan-bot-bear-defense]]
-# 核心：真底 = 投降(深跌+恐慌爆量+廣度washout+融資/外資壓力) 同時出現，非「收復 MA60」。
-# 三態：TRUE_BOTTOM(提早解鎖進場) / FALSE_REBOUND(收復MA60但仍熊→擋掉) / NORMAL_BULL / BEAR。
-# Tier-1：breadth/margin/foreign 用 watchlist 38 檔聚合代理（零額外 API），0050 算 panic/depth。
-# ⚠️ 全部閾值為先驗，須用「事件判別」(2022/10、2025/4 亮燈；2022/3、2022/8 暗) 驗證，非 fit 報酬。
+# --- 投降感知 regime（真底/假反彈分類器；live 採 block_only：只擋熊市假反彈，救 2022）---
+# 三態：TRUE_BOTTOM / FALSE_REBOUND（收復 MA60 但 MA60 下彎且仍深熊→擋掉）/ NORMAL_BULL / BEAR。
+# block_only 只依賴 0050（不需 panel/籌碼）；廣度/籌碼代理釘選 universe_list，測量基準不隨 watchlist 漂移。
 capitulation:
   enabled: true
-  # 進場閘門模式（P2 分年回測 2018-25 實證歸因）：
-  #   block_only(只擋假反彈) = 唯一淨贏 → 全期 Sharpe 0.81→0.90、DD -24.3→-17.5%、年化 11.3→12.5%、
-  #     救 2022(-27.0→-16.7%, DD-20.2→-12.8%)，且 2021/2023/2024 完全沒被殺(clean牛市gate不動)。
-  #   unlock_only(早解鎖,真底時 0050<MA60 也進) = 淨負(Sharpe 0.79)：無「失敗底出場」(P3)前會被熊市
-  #     多腿急殺套住 → 傷 2024/2025 → 暫緩，待 P3 建好失敗底快砍再啟用。
-  #   full = 兩者皆做(被 unlock 拖累)。→ 現採 block_only。
-  allow_mode: "block_only"       # full / block_only / unlock_only
-  warm_start: "2016-01-01"       # 因果百分位暖身錨定日（穩定 cache key、避免重抓爆 FinMind 額度）
-  # 廣度/籌碼代理來源：fixed=釘選下方 universe_list（=事件驗證時的原 38 檔基準）。
-  # watchlist 已擴充 AI 強勢股 → 若代理跟著 watchlist 漂移，breadth/margin 閾值的驗證就失效，故釘選。
-  universe_source: "fixed"       # fixed（釘選 universe_list）/ watchlist（跟隨選單）
+  allow_mode: "block_only"       # live 僅用 block_only（只擋假反彈、不早解鎖）
+  warm_start: "2016-01-01"       # 因果百分位暖身錨定日（穩定 cache key、避免重抓爆額度）
+  universe_source: "fixed"       # fixed＝廣度/籌碼代理釘選下方 universe_list
   universe_list: ["2330","2454","2303","2308","2379","3034","3711","2337","6415","3008",
                   "2317","2382","2357","2376","3231","4938","2356","2353",
                   "2881","2882","2891","2886","2884","2885","2892","5880",
@@ -140,73 +108,32 @@ capitulation:
                   "2603","2609","2615","2412","2912","1216"]
   pct_window: 756                # 因果滾動百分位回看(~3年交易日)
   pct_min_periods: 252           # 暖身最小樣本(~1年)，不足用 expanding；無前視
-  # 深度必要前提（AND 在所有判斷上；以 252 日高點衡量熊市深度）
-  deep_high_lookback: 252
-  deep_dd: -0.10                 # 距 252 日高 ≤ -10% 才談大底/才算熊市反彈
-  # Block A 恐慌/流動性（0050；實測最強 = panic）
-  panic_vol_pctl: 0.85           # 已實現波動(20d) 因果百分位 ≥（單獨即乾淨標出4真底）
-  panic_use_amihud: false        # ⚠️ 實證：Amihud 在爆量崩盤反而低(分母爆量)→ 不可當投降，預設不用
-  panic_amihud_pctl: 0.80        # （僅 panic_use_amihud=true 時生效；保留診斷）
-  # Block B 廣度 washout（38檔；用 MA60 廣度，MA20 廣度是反指不用）
-  breadth_below_ma60: 0.75       # close<MA60 檔數比例 ≥
-  breadth_decline_3dma: 0.65     # 3日均 下跌家數比 ≥
-  # Block C 融資斷頭（非線性門檻；跨檔平均 chg20，scale-free）
-  margin_q: 0.05                 # 市場融資 chg20 ≤ 滾動 q05
-  margin_abs: -0.15              # 或 ≤ -15%（2025 真底 -18.2% 先驗）
-  # Block D 外資順勢賣壓（鐵律：只能 co-confirm，永不單獨成立 true_bottom）
-  foreign_sell_z: 2.0            # -foreign_net20 因果 z ≥
-  # 假反彈判定：收復 MA60 但 MA60 仍下彎 + 仍深處熊市
-  ma60_falling_days: 20          # MA60 < MA60[-N] = 下彎
-  # task2 精修「持穩豁免」：連 N 日站上 MA60 → 豁免擋單（救 2019 過度擋）。實證否決：
-  #   2019 loss 不可解(所有 N 都卡 39.8%，與 2022/08 假反彈同口徑無法分)；N=20 看似贏(Sharpe0.96)
-  #   實為刀鋒過擬合——僅 N=18-20 好且全靠 2020 covid 單一事件，N=16 反 re-break 2022(-19.8)、N≥22 退回 base。
-  #   → 預設 0(關閉)，程式保留。最佳仍 = 純 block_only N=0(Sharpe0.90/DD-17.5%)。
-  reclaim_exempt_days: 0         # （實證刀鋒過擬合，預設關閉）
-  # P3 失敗底出場（market force_exit）：投降後破投降低點→全面去風險。
-  # 實證(P2/P3分年回測)否決：機制正確但不划算——它解「抱到破新低(2022)」，但早解鎖真正成本是
-  # 「V底前來回洗(2025純chop未破低)」failed-bottom幫不上；且自身在2024快V誤砍→連winner都被拖低
-  # (block_only 0.90→0.88)。→ 預設關閉，程式/選項保留。最佳=block_only 無P3(Sharpe0.90/DD-17.5%)。
-  failed_bottom_exit: false      # （實證反傷，預設關閉；程式保留）
-  failed_window: 40              # 投降後觀察窗（交易日）
-  failed_buffer: 0.0             # 跌破緩衝（0=精準破投降低；0.01=破 1% 才算，抗雜訊）
-  # 深度熊市/急殺防禦（#3）：regime-gated 收緊「既有部位」移動停損，原欲攻病根 #2「~9% ATR 急殺太寬」。
-  # 🔴 實證否決（notebooks/deep_bear_backtest.py，2018-25 @100k LIVE_UNIVERSE，2026-06-14）：
-  #   ① 廣義 mask(panic|深崩,337日/13.9%) 全否決——全期 DD -13.8%→-15.6/-15.1/-18.5%（反而更糟）、
-  #      砍牛年(2024 14.5→8.4%、2020 17.5→5.1%)＝高波動 bearish chop 把贏家 whipsaw（同 2025 V 底教訓）。
-  #   ② 純深熊 mask(163日)＝wash（max0.05：Sharpe1.14=baseline、DD-14.3%≈、僅 2024 -0.7pp）——因
-  #      block_only 已擋深熊期新進場、既有部位本就少/自身 ATR 已停 → 收停損無事可做。
-  #   結論：block_only(已 live) 已解掉深熊（2022 僅 -4.6%、全期 DD-13.8% Gate PASS@100k）→ deep_bear 無增量。
-  #   程式/選項保留（比照 market_vol_scaling/P3 慣例），預設關。觸發由 panic_0050(0050-only 單一真相源)算。
-  deep_bear:
-    enabled: false
-    dd_threshold: -0.15            # 跌破 MA60 且距 252 日高 ≤ 此 = 深熊（比進場 -0.10 更深）
-    panic_tighten_atr_max: 0.05    # tighten 日把既有部位 ATR 移動停損帶上限收到此（原 0.08-0.09）
+  deep_high_lookback: 252        # 以 252 日高點衡量熊市深度
+  deep_dd: -0.10                 # 距 252 日高 ≤ -10% 才算深處熊市（所有判斷的必要前提）
+  panic_vol_pctl: 0.85           # Block A 恐慌：已實現波動(20d) 因果百分位 ≥
+  breadth_below_ma60: 0.75       # Block B 廣度：close<MA60 檔數比例 ≥
+  breadth_decline_3dma: 0.65     # Block B 廣度：3日均下跌家數比 ≥
+  margin_q: 0.05                 # Block C 融資斷頭：市場融資 chg20 ≤ 滾動 q05
+  margin_abs: -0.15              # Block C 融資斷頭：或 ≤ -15%
+  foreign_sell_z: 2.0            # Block D 外資賣壓：因果 z ≥（只能 co-confirm，永不單獨成立真底）
+  ma60_falling_days: 20          # 假反彈判定：MA60 < MA60[-N] = 下彎
+  failed_bottom_exit: false      # 失敗底市場級出場：實證反傷（2024 快V誤砍）→ 關閉。
+  # ⚠️ 此鍵必須保留並釘 false：code 端 .get 預設為 True，移除＝誤開啟。其餘 failed_*/deep_bear 參數已移除（見 master 6.9）。
 
-# --- 交易模式（盤中零股）---
+# --- 交易模式（盤中零股；5–7 萬全走零股，回測對齊實盤）---
 trading:
-  mode: "odd_lot"           # odd_lot（=live實況，5-7萬全走零股，回測對齊實盤）/ hybrid / round_lot
-  lot_size: 1               # 非 hybrid 時的計價單位：整股=1000，零股=1
-  # Shioaji 委託張/股別（live 下單用；須與 lot_size 一致）：
-  #   Common=整股(張) / IntradayOdd=盤中零股(股) / Odd=盤後零股(股,14:30集合競價) / Fixing=定價(張,收盤價)
-  #   ⚠️ 之前未設 → 預設 Common(整股)，等於零股策略 live 會下成整股。現顯式指定。
-  #   ⚠️ Odd/Fixing 還需在對應時段(13:40-14:30 / 14:00-14:30)掛單 → 須另排程，非僅改此值。
-  order_lot: "IntradayOdd"  # 盤中零股（lot_size=1 對應）
-  # 盤後零股補單：盤中(09:05掛)沒成交/被拒的單，於 14:05 改掛盤後零股(Odd)→14:30集合競價補上
+  mode: "odd_lot"           # odd_lot（=live 實況）/ hybrid / round_lot
+  lot_size: 1               # 計價單位：整股=1000、零股=1
+  order_lot: "IntradayOdd"  # Shioaji 委託股別：盤中零股（須與 lot_size=1 一致）
   afterhours_fill: true     # 盤中掛不到的單於 13:50 改掛盤後零股(Odd)→14:30 集合競價補上
-  # 零股成交不確定性模型（PaperBroker 本一律成交，過度樂觀）：盤中買單以賣一掛，
-  #   賣方前 N 檔深度 < 想買股數 → 盤中不成交 → 轉盤後零股集合競價補單（深度厚，視為可成交）。
-  #   真實反映零股「薄帳掛得到不一定買得到」（day-1：2884 賣一僅 38 股 vs 想買 431 股）。
-  #   無零股簿(首撮前/API失敗) → fallback 假設滑價成交，不擋單。false=回舊行為(保證成交)。
-  odd_lot_fill_model: true
-  odd_lot_depth_levels: 1   # （legacy，parse_odd_book 用）判定吃幾檔賣方深度
-  # book-walk 部分成交（#2）：盤中零股沿賣方階梯往上吃到「比賣一高 max_impact_pct」或想買量為止。
-  #   薄帳→部分成交，餘量轉盤後零股集合競價(14:30 深簿)補滿目標倉（preserve「thin→盤後深簿」設計）。
-  odd_lot_book_levels: 5         # book-walk 解析賣方階梯檔數
-  odd_lot_max_impact_pct: 0.004  # 吃多檔的價格衝擊上限（與 odd_lot_slippage 同量級 0.4%；0=只吃賣一價）
+  odd_lot_fill_model: true  # 零股成交不確定性模型（賣方深度不足→盤中不成交→轉盤後補單）
+  odd_lot_depth_levels: 1   # （legacy；parse_odd_book 判定吃幾檔賣方深度）
+  odd_lot_book_levels: 5    # book-walk 解析賣方階梯檔數
+  odd_lot_max_impact_pct: 0.004  # book-walk 吃多檔的價格衝擊上限（與零股滑價同量級）
   slippage: 0.004           # 非 hybrid 時的單一滑價
-  round_lot_slippage: 0.001  # 整股低滑價（實測半價差 ~0.05-0.1%）
-  odd_lot_slippage: 0.0015   # 零股滑價（實測盤中半價差中位 0.092%，開盤較寬故留 margin）
-  min_liquidity_turnover: 50000000   # 流動性濾網：整股20日均成交額門檻(元)
+  round_lot_slippage: 0.001 # 整股滑價（實測半價差 ~0.05–0.1%）
+  odd_lot_slippage: 0.0015  # 零股滑價（實測盤中半價差中位 0.092%）
+  min_liquidity_turnover: 50000000   # 流動性濾網：整股 20 日均成交額門檻(元)
 
 # --- 交易成本（台股）---
 cost:
@@ -214,10 +141,10 @@ cost:
   sell_fee_rate: 0.001425   # 賣出手續費 0.1425%
   sell_tax_rate: 0.003      # 交易稅 0.3%（賣出才收）
   min_fee: 20               # 整股最低手續費 20 元
-  min_fee_odd: 1            # 零股最低手續費 1 元（視券商，逐筆計費）
+  min_fee_odd: 1            # 零股最低手續費 1 元（逐筆計費）
   fee_rebate: 0.0           # 手續費退傭率（折讓），0=無
 
-# --- 回測設定 ---
+# --- 回測設定（舊 vectorbt 框架 backtester.py 用；現行 live-aligned 回測 capped_sim 另以 2018–2025/100k 為準）---
 backtest:
   start_date: "2019-01-01"
   insample_end: "2022-12-31"   # In-sample 結束
