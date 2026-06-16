@@ -2,6 +2,25 @@
 # 系統設定
 # ==========================================
 
+# --- 策略路由（active 現行籌碼策略 / benchmark 0050 波動目標對照組）---
+# mode=active：完全照舊（ScoreEngine 選股 + ATR 移動停損，main.py active 分支原封不動）。
+# mode=benchmark：只交易 0050，依「波動目標」算曝險、每月或偏離 >5pp 才再平衡（見 src/strategy_engines）。
+#   benchmark 不套用 active 的籌碼候選與 ATR 移動停損（它有自己的再平衡邏輯）。
+strategy:
+  mode: active              # active | benchmark
+  # --- 對照組（benchmark）參數，僅 mode=benchmark 時生效 ---
+  benchmark:
+    symbol: "0050"          # 對照組標的（只用 0050）
+    target_daily_vol: 0.011 # 目標日波動（≈年化17.5%，與 strategy.yaml sizing.market_vol_target 同源）
+    vol_lookback: 20        # 已實現波動回看交易日（realized_vol_20d）
+    exposure_cap: 1.0       # 曝險上限（不加槓桿，其餘擺現金）
+    rebalance_band: 0.05    # 當前曝險偏離目標 > 此(5pp) 才調倉（降低換手）
+    monthly_rebalance: true # 每月第一個交易日強制再平衡（即使未偏離）
+    # regime overlay（可開關）：0050 收盤跌破 MA 時砍曝險（half=減半 / zero=歸零）
+    regime_overlay: false   # 是否啟用 regime overlay
+    regime_ma: 200          # overlay 均線週期（200 或 60）
+    regime_action: "half"   # half（減半）/ zero（歸零）
+
 # --- 排程時間（24h 格式，台灣時區）---
 schedule:
   pre_market: "08:50"       # 盤前選股
