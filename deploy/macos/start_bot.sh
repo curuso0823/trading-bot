@@ -23,12 +23,25 @@ CHILD=""
 _term() {
     [ -n "$CHILD" ] && kill -TERM "$CHILD" 2>/dev/null
     [ -n "$CHILD" ] && wait "$CHILD" 2>/dev/null
+    [ -n "${CAFFEINATE_PID:-}" ] && kill "$CAFFEINATE_PID" 2>/dev/null
     echo "$(date '+%F %T') supervisor 收到 SIGTERM → 已優雅停止 bot" >> "$LOG"
     exit 0
 }
 trap _term TERM INT
 
 echo "$(date '+%F %T') supervisor 啟動（PROJECT_DIR=$PROJECT_DIR）" >> "$LOG"
+
+# ── 盤中防 idle 睡眠（08:30 啟動盲區的白天版）─────────────────────
+# Mac 盤中 idle 會進維護睡眠，悶住 08:50 選股 / 09:12 下單的 APScheduler cron。
+# 背景 caffeinate 持有「禁止系統睡眠」assertion，綁定本 supervisor 壽命（-w $$）：
+# 15:00 stop_bot 收掉 supervisor → assertion 隨即釋放，Mac 恢復可睡。
+# （-i 連電池也防 idle 睡眠；-s 在 AC 時防睡眠；闔蓋仍強制睡眠，無永久不睡/斷電風險。）
+CAFFEINATE_PID=""
+if command -v caffeinate >/dev/null 2>&1; then
+    caffeinate -is -w $$ &
+    CAFFEINATE_PID=$!
+    echo "$(date '+%F %T') 已啟動 caffeinate（PID $CAFFEINATE_PID）防盤中 idle 睡眠" >> "$LOG"
+fi
 
 while true; do
     "$PY" main.py &
