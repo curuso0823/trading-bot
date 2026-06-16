@@ -63,13 +63,16 @@ def _lot_slip(close, capital, mode, cfg):
 
 def run_capped(price_df, sig, universe, start, end, capital=100_000, max_pos=6, mode="odd_lot",
                slip_scale=1.0, size_min=None, size_max=None, sector_max=None,
-               tighten_mask=None, deep_bear_max=None):
+               tighten_mask=None, deep_bear_max=None,
+               atr_mult=None, atr_lo=None, atr_hi=None, max_hold=None, target_vol=None):
     """在 (universe, 日期區間) 子集上跑集中策略模擬，回傳完整統計 dict（含分年、權益曲線點）。
     slip_scale：滑價壓力倍數（風險情境分析用，如急跌日零股簿薄 ×2/×3）。
     size_min/size_max：覆寫配重上下限（預設讀 0.10/0.30，與 live sizing 一致）。
     sector_max：同類股同時持倉上限，如 {"FIN": 2}（None=不限，行為與舊版完全一致）。
     tighten_mask/deep_bear_max（#3）：per-date 布林 Series + 收緊後停損帶上限。tighten 日把「既有部位」
-        移動停損帶上限收到 deep_bear_max（攻急殺）。兩者皆 None=不啟用，行為與舊版逐字相同。"""
+        移動停損帶上限收到 deep_bear_max（攻急殺）。兩者皆 None=不啟用，行為與舊版逐字相同。
+    atr_mult/atr_lo/atr_hi/max_hold/target_vol：覆寫 ATR 停損帶(4.5/0.08/0.09)、最長持有(60日)、
+        波動目標(0.02)。皆 None=逐字同舊版（Phase 6 出場/配重實驗用）。"""
     cfg = load_config()
     uni = set(str(s) for s in universe)
     s0, e0 = pd.Timestamp(start), pd.Timestamp(end)
@@ -88,12 +91,17 @@ def run_capped(price_df, sig, universe, start, end, capital=100_000, max_pos=6, 
 
     smin = 0.10 if size_min is None else float(size_min)
     smax = 0.30 if size_max is None else float(size_max)
+    amult = 4.5 if atr_mult is None else float(atr_mult)
+    alo = 0.08 if atr_lo is None else float(atr_lo)
+    ahi = 0.09 if atr_hi is None else float(atr_hi)
+    mhold = 60 if max_hold is None else int(max_hold)
+    tvol = 0.02 if target_vol is None else float(target_vol)
     vol20 = close.pct_change().rolling(20).std()
-    size_pct = (smax * 0.02 / vol20).clip(smin, smax)
+    size_pct = (smax * tvol / vol20).clip(smin, smax)
     pc = close.shift(1)
     trng = np.maximum.reduce([(hi - lo).values, (hi - pc).abs().values, (lo - pc).abs().values])
     atr_pct = pd.DataFrame(trng, index=close.index, columns=close.columns).rolling(14).mean() / close
-    trail = (4.5 * atr_pct).clip(0.08, 0.09)
+    trail = (amult * atr_pct).clip(alo, ahi)
     # #3 深度熊市/急殺：tighten 日把既有部位停損帶上限收到 deep_bear_max（None=不啟用，逐字同舊版）
     tg = (tighten_mask.reindex(close.index).fillna(False).to_numpy()
           if tighten_mask is not None else None)
@@ -132,7 +140,7 @@ def run_capped(price_df, sig, universe, start, end, capital=100_000, max_pos=6, 
             if (i - h["entry_i"]) < 1:
                 continue
             et = min(h["trail"], deep_bear_max) if (tighten_today and deep_bear_max is not None) else h["trail"]
-            if C[i, c] <= h["peak"] * (1 - et) or (i - h["entry_i"]) >= 60:
+            if C[i, c] <= h["peak"] * (1 - et) or (i - h["entry_i"]) >= mhold:
                 exiting.append(c)
         for c in exiting:
             h = held.pop(c)
