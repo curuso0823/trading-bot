@@ -285,6 +285,11 @@
 > 但**大多頭捕獲（#4）未改善**（2024 仍 ~+10% vs 0050 +49%）、且屬單期峰值獵取 → **未過 Phase 8 walk-forward 不調 live**。
 > 詳見 [`docs/IMPROVEMENT_PLAN_v2.md`](docs/IMPROVEMENT_PLAN_v2.md) Phase 6「結果」。
 
+> **Phase 8 已執行（2026-06-16，walk-forward 抗過擬合）**：上述 Phase 6 候選（守恆N15·90·.15）**未通過** out-of-sample。
+> 真·再優化 walk-forward（擴張訓練窗）的點時 Gate **從未選到它**（4 窗 3 次選回固定 6 格）＝典型 4/72 單期峰值；
+> pooled OOS Sharpe **1.36 打不贏現行 6 格的 1.40**、且為尖峰（max_hold 90→60 Calmar -39%）非高原。唯一前瞻穩健效果是**降 DD**（最差前進年 -9.3% vs 基準 -13.0%），與「唯一硬邊是回撤」一致。
+> **`max_positions` 維持 6、出場維持 60/0.09、配重維持 0.30，live 全不動。** IR vs 基準B≈0（+0.01）預示 #1 / Phase 10。詳見 [`docs/IMPROVEMENT_PLAN_v2.md`](docs/IMPROVEMENT_PLAN_v2.md) Phase 8「結果」。
+
 ### 6.5 七大缺失（quant 角度）
 
 | # | 缺失 | 重點 |
@@ -319,7 +324,7 @@
 |-------|------|----------|------------------|
 | **Phase 6** ✅已執行：並倉上限與交易頻率 | 拆解低頻真因；畫「頻率 vs 風險調整報酬」權衡曲線。**加大並倉須綁配套**（縮小單檔配重 / 組合層波動目標 / 出場改造），因為單純 6→20 已知**不改善 Sharpe 還惡化 DD**。→ **已畫曲線（2026-06-16）：配套A＋C 高N守恆 in-sample 4 格過 Gate；live `max_positions` 維持 6，候選區 deferred 至 Phase 8 驗證** | #5, #3 | DD 不破 -18%（理想回 -15%）；Calmar/Sharpe 相對 6 格 +≥10%；單檔貢獻度下降 |
 | **Phase 7** ✅已執行（診斷先行）：出場改造 | 修正大多頭年慘敗：停損寬度與 regime 連動、分批停利、（謹慎）加碼、重評 max_hold_days=60。→ **診斷（2026-06-16）以 exit 角度否決**：放寬/拉長出場反讓 2024 更糟（捕獲 0.29→0.03）、2020 與 2024 反應相反 → #4 為**結構性集中度**問題非 exit；未改引擎、live 不動，#4 移交 **Phase 9（規則化選龍頭）/ 重訪集中度** | #4, #6 | 大多頭年 up-capture 顯著上升；熊市 down-capture 不惡化；Sharpe/Calmar 不降 |
-| **Phase 8**：抗過擬合壓測 | 滾動 walk-forward、參數高原檢測、擾動/bootstrap、跨市場 sanity check | #3 | OOS 聚合達 Gate（Sharpe≥1.0 / DD≤-15% / 年化≥10%）；參數落在高原而非尖峰 |
+| **Phase 8** ✅已執行：抗過擬合壓測 | 滾動 walk-forward、參數高原檢測、擾動/bootstrap。→ **walk-forward（2026-06-16）否決 Phase 6 候選**：點時再優化從未選到守恆N15·90·.15（4/72 單期峰值）、pooled OOS Sharpe 1.36 **打不贏現行 6 格 1.40**、且為尖峰非高原；唯一前瞻穩健效果是降 DD（-9.3 vs -13.0）。**live 全不動**；IR vs 基準B≈0 預示 Phase 10。#4 移交 Phase 9 | #3 | OOS 聚合達 Gate（Sharpe≥1.0 / DD≤-15% / 年化≥10%）；參數落在高原而非尖峰 |
 | **Phase 9**：point-in-time 規則化選股 | 消除後見之明：universe 只用當時可得資訊規則化建構（禁用事後 CAGR），含下市標的，重跑全套診斷 | #2 | 去後見之明後 OOS 仍達 Gate；明確記錄績效衰減幅度 |
 | **Phase 10**：對 0050 正式 alpha/IR 檢定 | alpha/beta 迴歸 + IR 顯著性 + 籌碼層增量檢定；裁決「主動策略值不值得維運」 | #1, #6 | 對「0050+vol-target」alpha t≥2（或 bootstrap 95% 不含 0）；籌碼層 IR 增量須顯著否則降級 |
 | **Phase 11**：容量/實用性/投報比 | 資金規模敏感度、零股滑價回灌、高價股可及性、維運成本對帳 | #7 | 滑價校準後年化衰減 < 2pp；給出正投報比的最小資金門檻 |

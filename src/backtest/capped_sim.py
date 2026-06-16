@@ -64,7 +64,8 @@ def _lot_slip(close, capital, mode, cfg):
 def run_capped(price_df, sig, universe, start, end, capital=100_000, max_pos=6, mode="odd_lot",
                slip_scale=1.0, size_min=None, size_max=None, sector_max=None,
                tighten_mask=None, deep_bear_max=None,
-               atr_mult=None, atr_lo=None, atr_hi=None, max_hold=None, target_vol=None):
+               atr_mult=None, atr_lo=None, atr_hi=None, max_hold=None, target_vol=None,
+               full_equity=False):
     """在 (universe, 日期區間) 子集上跑集中策略模擬，回傳完整統計 dict（含分年、權益曲線點）。
     slip_scale：滑價壓力倍數（風險情境分析用，如急跌日零股簿薄 ×2/×3）。
     size_min/size_max：覆寫配重上下限（預設讀 0.10/0.30，與 live sizing 一致）。
@@ -72,7 +73,9 @@ def run_capped(price_df, sig, universe, start, end, capital=100_000, max_pos=6, 
     tighten_mask/deep_bear_max（#3）：per-date 布林 Series + 收緊後停損帶上限。tighten 日把「既有部位」
         移動停損帶上限收到 deep_bear_max（攻急殺）。兩者皆 None=不啟用，行為與舊版逐字相同。
     atr_mult/atr_lo/atr_hi/max_hold/target_vol：覆寫 ATR 停損帶(4.5/0.08/0.09)、最長持有(60日)、
-        波動目標(0.02)。皆 None=逐字同舊版（Phase 6 出場/配重實驗用）。"""
+        波動目標(0.02)。皆 None=逐字同舊版（Phase 6 出場/配重實驗用）。
+    full_equity：True 時額外回傳未下採樣的逐日權益(equity_full/equity_full_dates)，供 Phase 8 walk-forward
+        切任意日期區間算 OOS Sharpe/DD/IR；預設 False＝逐字同舊版（不改/不新增任何既有鍵）。"""
     cfg = load_config()
     uni = set(str(s) for s in universe)
     s0, e0 = pd.Timestamp(start), pd.Timestamp(end)
@@ -187,10 +190,11 @@ def run_capped(price_df, sig, universe, start, end, capital=100_000, max_pos=6, 
                 held[c] = {"qty": qty, "peak": fill, "entry_i": ni,
                            "trail": TR[i, c] if np.isfinite(TR[i, c]) else 0.09, "basis": basis}
                 entry_cnt[stocks[c]] = entry_cnt.get(stocks[c], 0) + 1
-    return _stats(pd.Series(eq, index=close.index), trades, conc, entry_cnt, pnl_by_stock, cfg, capital)
+    return _stats(pd.Series(eq, index=close.index), trades, conc, entry_cnt, pnl_by_stock, cfg, capital,
+                  full_equity=full_equity)
 
 
-def _stats(s, trades, conc, entry_cnt, pnl_by_stock, cfg, capital):
+def _stats(s, trades, conc, entry_cnt, pnl_by_stock, cfg, capital, full_equity=False):
     r = s.pct_change().dropna()
     sharpe = float(r.mean() / r.std() * np.sqrt(252)) if r.std() > 0 else 0.0
     yrs = len(s) / 252
@@ -213,7 +217,7 @@ def _stats(s, trades, conc, entry_cnt, pnl_by_stock, cfg, capital):
                              "dd": float((sy / sy.cummax() - 1).min())}
     step = max(1, len(s) // 320)
     active = conc[conc > 0]
-    return {
+    out = {
         "annual": cagr, "sharpe": sharpe, "dd": dd, "pf": pf,
         "total_return": float(s.iloc[-1] / s.iloc[0] - 1), "n_trades": len(trades),
         "win_rate": float(len(wins) / len(trades)) if trades else 0.0,
@@ -225,3 +229,7 @@ def _stats(s, trades, conc, entry_cnt, pnl_by_stock, cfg, capital):
         "equity_pts": [round(float(v), 1) for v in s.iloc[::step]],
         "equity_dates": [str(d.date()) for d in s.index[::step]],
     }
+    if full_equity:   # Phase 8 walk-forward：未下採樣逐日權益（raw float，不 round）
+        out["equity_full"] = [float(v) for v in s.to_numpy()]
+        out["equity_full_dates"] = [str(d.date()) for d in s.index]
+    return out
