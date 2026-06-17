@@ -7,19 +7,19 @@
 # mode=benchmark：只交易 0050，依「波動目標」算曝險、每月或偏離 >5pp 才再平衡（見 src/strategy_engines）。
 #   benchmark 不套用 active 的籌碼候選與 ATR 移動停損（它有自己的再平衡邏輯）。
 strategy:
-  mode: active              # active | benchmark
+  mode: benchmark           # active | benchmark  ← R6 被動落地（2026-06-17）：PIT 重建裁決＝誠實池無前瞻 alpha → 改被動為主
   # --- 對照組（benchmark）參數，僅 mode=benchmark 時生效 ---
   benchmark:
     symbol: "0050"          # 對照組標的（只用 0050）
-    target_daily_vol: 0.011 # 目標日波動（≈年化17.5%，與 strategy.yaml sizing.market_vol_target 同源）
+    target_daily_vol: 1.0   # R6 定稿：=100%/日（遠高於 0050 實現波動）→ vol-cap 永不 binding＝base 恆 100% 跟 0050；唯一作用＝下方 MA200 overlay
     vol_lookback: 20        # 已實現波動回看交易日（realized_vol_20d）
     exposure_cap: 1.0       # 曝險上限（不加槓桿，其餘擺現金）
     rebalance_band: 0.05    # 當前曝險偏離目標 > 此(5pp) 才調倉（降低換手）
     monthly_rebalance: true # 每月第一個交易日強制再平衡（即使未偏離）
-    # regime overlay（可開關）：0050 收盤跌破 MA 時砍曝險（half=減半 / zero=歸零）
-    regime_overlay: false   # 是否啟用 regime overlay
-    regime_ma: 200          # overlay 均線週期（200 或 60）
-    regime_action: "half"   # half（減半）/ zero（歸零）
+    # regime overlay：0050 收盤跌破 MA 時砍曝險。regime_action 支援 "zero"(歸零)/"half"(減半)/數值 0~1(保留比例)
+    regime_overlay: true    # R6 定稿：啟用＝MA200 最後一道防線（平時滿倉跟 0050，唯 0050 跌破 MA200 才砍倉）
+    regime_ma: 200          # 最後防線門檻＝0050 200日均線（canonical、whipsaw 最少；要更快改 120/60）
+    regime_action: 0.85     # R6 定稿：跌破 MA200 → 保留 85% 曝險（輕度退場、漲回回滿）；0=全退、0.5=半倉
 
 # --- 排程時間（24h 格式，台灣時區）---
 schedule:

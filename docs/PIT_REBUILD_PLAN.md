@@ -205,14 +205,15 @@ R0/R1/R-attrib 已定讞：**誠實池無穩健 alpha，唯一真貢獻＝regime
 - 全套 `pytest` 綠 → paper-trade 驗流程 → 小額 live。
 - **在此步之前 live 全不動。**
 
-### ✅ R6 結果（2026-06-17；使用者選「被動為主」落地＝benchmark + MA200 overlay；config 已寫+測試、待部署）
+### ✅ R6 結果（2026-06-17；被動落地 0050+MA200-85% overlay + 倉庫清理；已執行、待使用者部署）
 
 R5 裁決後使用者選 **R6 被動落地**、口味＝**vol-target + MA200 overlay**（白話：平時跟 0050、跌破 MA200 退、漲回再跟）。
 - **零 code 改動**：live 早有 active/benchmark 模式開關（commit 45006c4，`config/settings.yaml → strategy.mode`）→ 純 config flip。`BenchmarkEngine`：只交易 0050、vol-target 配重、MA overlay、月度/偏離再平衡、fail-safe（未知 mode 回退 active）。
-- **改動**（`config/settings.yaml`）：`mode: active→benchmark`；`benchmark`＝0050 / target_daily_vol **0.011**（**平時 vol-managed 為主**、~80% 曝險；要恆滿跟0050改0.05）/ cap 1.0 / **regime_overlay true / regime_ma 200 / regime_action zero**（**MA200 跌破＝最後一道防線**→全退現金、漲回全進；要溫和改 half）。**參數由使用者意圖＋結構穩健選（MA200 canonical、whipsaw 最少 12次/4年），非 OOS 峰值挑（鐵則#7；跨變體 spread＝雜訊、R5 已定無顯著 alpha）。**
-- **驗證**：`pytest` **97 passed**（零 code 改動）；dry-run：make_engine()→BenchmarkEngine（0050 / vol 0.011 / overlay MA200 zero）、今日 0050 65.60 ＞ MA200 52.56（未觸最後防線）。
+- **改動**（`config/settings.yaml`）：`mode: active→benchmark`；`benchmark`＝0050 / **target_daily_vol 1.0**（停 vol-cap＝平時 100% 跟 0050）/ cap 1.0 / **regime_overlay true / regime_ma 200 / regime_action 0.85**（跌破 MA200 留倉 85%、漲回回滿）。引擎 `regime_action` additive 支援數值（zero/half 不變）。**最終留倉 85% 由細網格退場深度 0~100% 掃描後定（`r6_retreat_finegrid.py`）＝風險偏好旋鈕、非 OOS 峰值挑（鐵則#7；R5 已定無顯著 alpha）。**
+- **驗證**：`pytest` **98 passed**（含舊 active 執行碼刪除後）；dry-run：make_engine()→BenchmarkEngine（0050 / target_vol 1.0 / overlay MA200 / regime_action 0.85）、今日 0050 65.60 ＞ MA200 52.56（在線上→100%）。
 - **誠實定位**：結構性降回撤規則、符合使用者風險偏好；**非經證實 outperformer**（R5 無顯著 alpha；overlay 前瞻預期＝降深熊 DD 但 MA 附近 whipsaw、牛市≈跟 0050；OOS 表「贏 0050」是期間特性+雜訊、不外推）。
-- **待使用者**：① 部署（重啟 main.py；切換前現有 active paper 持倉成孤兒→刪 `data/processed/paper_account.json` 或先平倉）；② git commit/branch（不自動）；③ 可選 param flip（half/MA120/0.011 base）。rollback＝mode 改回 active。
+- **倉庫清理（與 R6 一併執行）**：刪舊 active 直接執行路徑（`score_engine`/`chip_signal`/`active_engine` + `main.py` active 任務/排程；`make_engine` benchmark-only fail-safe）；研究回測路徑**保留**（`tech_signal`/`capitulation`/`capped_sim`/`signal_builder` + `strategy.yaml` research 配置——反向相依 grep 驗證不可刪）；`pytest` **98 綠**。研究歷程統整於 `docs/RESEARCH_JOURNEY.md`。`pit-rebuild` 整併為單一乾淨主線。
+- **待使用者**：部署（重啟 main.py；切換前清 `data/processed/paper_account.json` 孤兒倉）；push（未自動）。rollback＝`strategy.mode` 回 active（active 執行碼已刪→fail-safe 回 benchmark）。
 
 ---
 
@@ -228,6 +229,6 @@ R5 裁決後使用者選 **R6 被動落地**、口味＝**vol-target + MA200 ove
 
 - **觸發**：✅ 已達成 —— builder 完成、法人∩融資券 **1813 ≥ 1400**、四方完整 **1706**、除權息足以 `adjust=True` 純快取。R0 已執行。
 - **branch**：`pit-rebuild`（R0 產物在此，未 commit）；`main`（live config/src）不動到通過總 Gate。
-- **執行順序**：~~前置~~ ✅ → ~~R0~~ ✅ → ~~R1~~ ✅（K=cherry-pick、加格僅方向性、FAIL）→ ~~R-attrib~~ ✅（無層加 alpha、唯 regime 降 DD、籌碼疑慮坐實）→ ~~R5~~ ✅（…被動為主誠實出口、總 Gate FAIL）→ ~~R6~~ ✅（使用者選被動落地＝benchmark + MA200-zero overlay；config 寫+測試綠、**待部署/commit**）；~~R2/R3/R4~~ ⏭️ 跳過。**重建 R0→R6 完成；live 由手挑 35 檔 active 轉被動 0050+MA200 overlay，待部署生效。**
+- **執行順序**：~~前置~~ ✅ → ~~R0~~ ✅ → ~~R1~~ ✅（K=cherry-pick、加格僅方向性、FAIL）→ ~~R-attrib~~ ✅（無層加 alpha、唯 regime 降 DD、籌碼疑慮坐實）→ ~~R5~~ ✅（…被動為主誠實出口、總 Gate FAIL）→ ~~R6~~ ✅（被動落地 0050+**MA200-85%** overlay + **倉庫清理**：舊 active 執行碼刪除、研究保留、pytest 98 綠、`RESEARCH_JOURNEY.md`）；~~R2/R3/R4~~ ⏭️ 跳過。**重建 R0→R6 完成；live 已轉被動，待使用者部署。**
 
 *版本：v1 | 2026-06-16 | 性質：等乾淨 PIT 資料就緒後的執行 playbook（非定論，每步綁 OOS）*

@@ -54,7 +54,8 @@ def vol_target_exposure(close: pd.Series, *, target_daily_vol: float, lookback: 
     """逐日目標曝險序列（0~cap）。pure：給一條 close 算整段 exposure，回測/單元測試共用。
 
     exposure = clip(target_daily_vol / realized_vol_20d, 0, cap)
-    regime overlay（可選）：close < MA(regime_ma) 當日，exposure ×0.5（half）或 ×0（zero）。
+    regime overlay（可選）：close < MA(regime_ma) 當日，exposure ×mult；mult 由 regime_action 決定——
+      "zero"→0、"half"→0.5、或數值 0~1（如 0.85）→保留該比例曝險（live R6＝0.85，最後防線砍至 85%）。
     暖身不足（vol 為 NaN）→ 該日 exposure = 0（不下注，保守）。
     """
     close = close.astype(float)
@@ -68,7 +69,17 @@ def vol_target_exposure(close: pd.Series, *, target_daily_vol: float, lookback: 
         ma = close.rolling(int(regime_ma)).mean()
         below = close < ma                       # MA 暖身不足 → NaN → 視為「未跌破」(不砍)
         below = below.fillna(False)
-        mult = 0.0 if str(regime_action).lower() == "zero" else 0.5
+        ra = regime_action
+        if isinstance(ra, str) and ra.lower() == "zero":
+            mult = 0.0
+        elif isinstance(ra, str) and ra.lower() == "half":
+            mult = 0.5
+        else:                                  # 數值（含數值字串）：跌破時保留該比例曝險（0~1，如 0.85）
+            try:
+                mult = float(ra)
+            except (TypeError, ValueError):
+                mult = 0.5
+        mult = min(max(float(mult), 0.0), 1.0)
         exp = exp.where(~below, exp * mult)
     return exp
 
@@ -189,18 +200,16 @@ class BenchmarkEngine(StrategyEngine):
 
 
 def make_engine(score_engine=None):
-    """依 settings.yaml 的 strategy.mode 回傳對應引擎（active 預設）。
+    """回傳 live 策略引擎（benchmark 被動：0050 波動目標 + MA200 overlay）。
 
-    mode 缺失/未知 → 一律回 ActiveEngine（fail-safe：絕不誤切到 benchmark 而動到 live 路徑）。
-    score_engine：active 時可注入既有單例，避免重複建立資源。
+    2026-06-17 起 live 僅 benchmark（舊 active 籌碼策略執行路徑已移除）。
+    mode 非 "benchmark" → 記錄警告但仍回 BenchmarkEngine（fail-safe，不返回死類型/不誤動）。
+    score_engine 參數保留以維持呼叫端簽章相容（benchmark 不使用）。
     """
     from loguru import logger
-    from src.strategy_engines.active_engine import ActiveEngine
 
-    mode = str((load_settings().get("strategy", {}) or {}).get("mode", "active")).lower()
-    if mode == "benchmark":
-        logger.info("策略引擎：benchmark（0050 波動目標對照組）")
-        return BenchmarkEngine()
-    if mode != "active":
-        logger.warning(f"strategy.mode={mode!r} 未知 → fail-safe 回退 active（不動 live 路徑）")
-    return ActiveEngine(score_engine)
+    mode = str((load_settings().get("strategy", {}) or {}).get("mode", "benchmark")).lower()
+    if mode != "benchmark":
+        logger.warning(f"strategy.mode={mode!r} 非 benchmark（active 已移除）→ fail-safe 改用 benchmark")
+    logger.info("策略引擎：benchmark（0050 波動目標 + MA200 overlay 被動策略）")
+    return BenchmarkEngine()

@@ -13,7 +13,6 @@ import pytest
 from src.strategy_engines.benchmark_engine import (
     BenchmarkEngine, vol_target_exposure, is_month_first_trading_day, make_engine,
 )
-from src.strategy_engines.active_engine import ActiveEngine
 
 
 # ────────────────────── 配重（exposure）──────────────────────
@@ -76,6 +75,19 @@ def test_regime_overlay_half_and_zero():
     below_idx = close.index[-1]
     assert half.loc[below_idx] == pytest.approx(base.loc[below_idx] * 0.5, rel=1e-9)
     assert zero.loc[below_idx] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_regime_overlay_numeric_mult():
+    """regime_action 數值（如 0.85，live R6）→ 跌破 MA 當日 exposure ×0.85；字串數值亦接受。"""
+    n = 80
+    close = pd.Series(np.linspace(100, 60, n), index=pd.bdate_range("2020-01-01", periods=n))
+    base = vol_target_exposure(close, target_daily_vol=0.011, lookback=20, exposure_cap=1.0,
+                               regime_overlay=False)
+    below_idx = close.index[-1]
+    for ra in (0.85, "0.85"):
+        keep = vol_target_exposure(close, target_daily_vol=0.011, lookback=20, exposure_cap=1.0,
+                                   regime_overlay=True, regime_ma=20, regime_action=ra)
+        assert keep.loc[below_idx] == pytest.approx(base.loc[below_idx] * 0.85, rel=1e-9)
 
 
 # ────────────────────── 月度標記 ──────────────────────
@@ -164,10 +176,11 @@ def test_rebalance_invalid_price_holds():
 
 # ────────────────────── 引擎工廠路由 ──────────────────────
 
-def test_make_engine_active_default(monkeypatch):
+def test_make_engine_default_benchmark(monkeypatch):
+    """live 僅 benchmark：舊值 mode=active → fail-safe 回 benchmark（active 已移除）。"""
     import src.strategy_engines.benchmark_engine as be
     monkeypatch.setattr(be, "load_settings", lambda: {"strategy": {"mode": "active"}})
-    assert isinstance(make_engine(), ActiveEngine)
+    assert isinstance(make_engine(), BenchmarkEngine)
 
 
 def test_make_engine_benchmark(monkeypatch):
@@ -179,8 +192,8 @@ def test_make_engine_benchmark(monkeypatch):
     assert eng.symbol == "0050"
 
 
-def test_make_engine_unknown_mode_failsafe_active(monkeypatch):
-    """未知 mode → fail-safe 回 active（絕不誤動 live 路徑）。"""
+def test_make_engine_unknown_mode_failsafe_benchmark(monkeypatch):
+    """未知 mode → fail-safe 回 benchmark（active 已移除，不返回死類型）。"""
     import src.strategy_engines.benchmark_engine as be
     monkeypatch.setattr(be, "load_settings", lambda: {"strategy": {"mode": "garbage"}})
-    assert isinstance(make_engine(), ActiveEngine)
+    assert isinstance(make_engine(), BenchmarkEngine)

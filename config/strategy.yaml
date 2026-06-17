@@ -1,8 +1,15 @@
 # ==========================================
-# 策略參數 — 所有數字都在這裡調，不改 code
+# 策略參數（舊 active 籌碼策略）— 現為「研究回測」用，不再被 live 執行
 # ==========================================
 #
-# 本檔＝現行 live 策略的單一真相來源，只列「正在用」的參數。
+# ⚠️ 2026-06-17：live 已改 benchmark 被動（0050 + MA200 overlay；見 config/settings.yaml strategy.mode）。
+#   舊 active 籌碼策略的「直接執行路徑」（ScoreEngine / ActiveEngine / main.py active 任務 / chip_signal）已移除。
+#   本檔參數**不再被 live 執行**；但仍被**研究回測引擎**讀取以重現舊 active 策略供回測，故**保留未剪裁**：
+#     - src/signals/tech_signal.py（讀 ta_filter）、src/backtest/signal_builder.py（讀 chip_scoring/sizing/regime/capitulation）、
+#       src/backtest/capped_sim.py（讀 performance_gate/capitulation）、src/risk/risk_guard.py（讀 entry/exit，live 共用）。
+#   完整研究歷程見 docs/RESEARCH_JOURNEY.md。以下為原始說明（歷史脈絡）：
+#
+# 本檔＝（舊）live 策略的單一真相來源，只列「正在用」的參數。
 # 2026-06-16 重構：已實證否決的選項（過度延伸濾鏡、市場波動曝險縮放、類股分散、
 #   MA60 斜率/大盤 MA20 出場、capitulation 的 amihud/reclaim 豁免/unlock·full 模式/deep_bear 收停損…）
 #   已自本檔移除——這些 code 端皆 .get(預設=關閉)，移除不改變任何行為。其否決理由與數據完整收錄於
