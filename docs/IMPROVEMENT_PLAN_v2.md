@@ -427,11 +427,11 @@ Sharpe 領先（1.16 vs 1.01）幅度小且在單一市場/單一期間樣本下
 
 ### B.3 待 PIT 資料備齊後的重構範圍（roadmap）
 
-> **觸發 gate**：背景監看（`logs/chip_cache_watch.out`），**廣池籌碼（法人∩融資券）≥ ~1400（現 53、~3%）** 才啟動；重構走**新 branch**，**live 全程不動**直到誠實 PIT walk-forward 勝基準B。
+> **觸發 gate**：✅ 已達成（法人∩融資券 **1813 ≥ 1400**、四方完整 price∩inst∩margin∩div **1706**）→ R0 已啟動並完成（2026-06-17）。重構走**新 branch `pit-rebuild`**，**live（config/src）全程不動**直到誠實 PIT walk-forward 勝基準B。
 
 | # | 重構項 | 內容 | 優先 | 前置 |
 |---|---|---|---|---|
-| **R0** | **誠實基準** | 建「機械 PIT universe（top-K 流動性、週期 reselect）＋ 籌碼 ＋ regime ＋（動量）」＝ **新的真實對照組**，取代污染的 12.7%/1.16 | **最高** | 廣池籌碼 ≥~90% |
+| **R0** ✅ | **誠實基準** | 建「機械 PIT universe（top-K 流動性、季 reselect）＋ 籌碼 ＋ block_only regime ＋ vol_target」＝ 新真實對照組。**2026-06-17 完成**：OOS Sharpe 中位 ~0.93（K 非單調 0.56–1.21）≈ 被動（B 0.80/0050 0.95）、IR vs B 多負、唯 DD 略優 → **打平、無穩健 alpha**（詳 `PIT_REBUILD_PLAN.md` §2 ✅R0 結果）| **最高** | ✅ 1706 池 |
 | **R1** | **Phase 6 重跑** | 誠實 PIT universe 上重掃 `max_positions` —— **重點驗「加格在誠實池是否反而需要」**（疑似翻盤）| 高 | R0 |
 | **R2** | **動量傾斜乾淨驗** | 「PIT＋籌碼」上驗 `score'=chip+λ·mom` —— 解除手挑 confound，定動量傾斜去留 | 高 | R0 |
 | **R3** | Phase 7 重跑 | 若誠實池龍頭捕獲仍差，才驗出場敏感度 | 中 | R1 |
@@ -439,9 +439,10 @@ Sharpe 領先（1.16 vs 1.01）幅度小且在單一市場/單一期間樣本下
 | **R5** | Phase 10 | 用**誠實基準**做 alpha/IR 正式檢定（現在做會被污染高估）| 中 | R0 |
 | **R6** | （殘留）survivorship | 補下市／歷史成分以去倖存者偏誤 —— **FinMind 此 stack 無 → 多半無解**，標為殘留偏誤、不假裝消除 | 低/受限 | 外部資料 |
 
-**資料工程前置**：廣池價量已 100%、除權息 ~89%；**法人/融資券是 builder 第 3、4 輪、現 ~3%**，樂觀大半天～一天補齊（550/hr）。R0–R5 須等籌碼補齊；R6 受限於 FinMind 無下市資料、部分無解。
+**資料工程前置**：✅ **builder 已完成**（價量 1979 / 法人 1977 / 融資券 1813 / 除權息 1775；**四方完整 1706**；除權息足以 `adjust=True` 純快取）。R0 已在此池執行（`notebooks/r0_data_audit.py` 稽核 + `data/processed/r0_cache_audit.json`）。R6 受限於 FinMind 無下市資料、部分無解（survivorship 殘留）。
 
 **心理準備（承 Phase 9 / plan-doc）**：誠實重構後，**結論很可能是「主動策略相對被動無顯著 alpha、唯一站得住的是 regime 降 DD（且 DD 優勢也比帳面小）」**，理性出口可能是「**縮小主動部位、以被動為主**」。R0–R5 的目的**不是救活策略，而是得到不含後見之明的真相**以作此決策。
+> **✅ R0（2026-06-17）已初步印證此預測**：誠實 PIT baseline 在 OOS 與被動打平（中位 Sharpe ~0.93 vs B 0.80/0050 0.95）、IR vs B 多負、無穩健 alpha，唯 DD 略優——正是上述「無 alpha、只剩 regime 降 DD」的形狀。最終裁決待 R1（walk-forward 選 K）／R5（正式 alpha 檢定）。
 
 ---
 

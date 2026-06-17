@@ -7,14 +7,14 @@
 
 ## 0. 定位與心理準備（先讀）
 
-- **起因**：Phase 9 證實現行策略帳面 edge 大半是手挑 universe 的**後見之明**（同規模手挑溢價 **+0.38 pooled OOS Sharpe / +9pp 年化**，下界）；最佳**誠實 PIT 機械策略 0.50 打不贏被動**（基準B 0.80、0050 1.01）。
+- **起因**：Phase 9 證實現行策略帳面 edge 大半是手挑 universe 的**後見之明**（同規模手挑溢價 **+0.38 pooled OOS Sharpe / +9pp 年化**，下界）；最佳**誠實 PIT 機械策略 0.50 打不贏被動**（基準B 0.80、0050 1.01）。**→ R0 已執行（2026-06-17）**：跑**完整 edge**（籌碼+adjust+乾淨 top-K）版，OOS 中位 ~0.93、仍**與被動打平、無穩健 alpha、唯 regime 降 DD**（見 §2 ✅ R0 結果；0.50 是 Phase 9 momentum-only 粗版，R0 較高非翻案）。
 - **目標**：**不是「救活舊策略」，而是用乾淨資料找出「真正存在、可前瞻複製的 edge」（若有）。** 誠實出口可能是「以被動為主、縮小主動部位」——那也是有價值的結論。
 - **成功定義**：得到**不含後見之明的真相**，不是「一定要生出獲利策略」。
 - **不可違反的紀律**（承 Phase 6/7/8/9）：① 每步綁 **walk-forward OOS**，in-sample 只當線索；② 對照基準**固定且預先指定**＝ 0050 買持 + 基準B（vol_target 0.011，**非** best-of-sweep）；③ 走**新 branch `pit-rebuild`**，**live（main）全程不動**，直到通過總 Gate（OOS 勝基準B、或 DD 優勢單獨成立）；④ **禁用任何 t 之後資訊**（無「近 3 年 CAGR」、無「AI 贏家」名單）。
 
 ---
 
-## 1. 前置 — 資料就緒驗證（明天第一件事）
+## 1. 前置 — 資料就緒驗證 ✅（2026-06-17 完成）
 
 - **就緒 Gate**：廣池籌碼（法人∩融資券）≥ ~1400（理想 ~90%）、除權息 100%（使 `adjust=True` 還原價可用、不打 API）。
 - **PIT 完整性稽核**：逐檔檢查 institutional/margin 的起訖日與缺口 → 標出「2018–25 籌碼完整」的可用子集；缺口大的股票在對應期間不得納入（避免假訊號）。
@@ -23,7 +23,7 @@
 
 ---
 
-## 2. R0 — 機械 PIT universe 規則 ＋ 誠實基準（**最高優先**）
+## 2. R0 — 機械 PIT universe 規則 ＋ 誠實基準 ✅（2026-06-17 完成，結果見本節末）
 
 **R0a：機械 PIT universe 規則（無 look-ahead）**
 - 規則：每個 rebalance 時點 t，**只用 t 之前資料** —— trailing N 日成交額 **top-K** ＋ 上市滿 M 年 ＋ 價格下限（去雞蛋水餃股）。
@@ -35,6 +35,30 @@
 - 在 PIT universe 上跑現有 edge 疊加（TA + 籌碼 + regime + vol_target），用真 PIT 籌碼（`adjust=True`）。
 - 立即對照 0050 買持、基準B。**這取代污染的 12.7%/1.16，成為一切後續的真實 baseline。**
 - **產出**：`notebooks/r0_honest_baseline.py`。預期：接近或略輸被動，只剩 regime 降 DD —— 先確立這個誠實起點。
+
+### ✅ R0 結果（2026-06-17 執行；新真實 baseline，取代污染 12.7%/1.16）
+
+**資料就緒 Gate：PASS** —— 法人∩融資券 1813 ≥ 1400；**四方完整 price∩inst∩margin∩div = 1706 檔**（adjust=True+籌碼純快取工作池；排除 204 無除權息以免 adjust 打 API）。⚠️ survivorship 殘留：FinMind 無下市 → 池＝存活池 → 所有數字皆**上界**。
+
+**交付**（branch `pit-rebuild`，純快取驗證 0 次 API、未改 live、未 commit）：
+- `notebooks/r0_data_audit.py` — 覆蓋率/缺口報表 + 可用子集（籌碼完整 879、全期橫跨 1538）+ 殘留聲明（寫 `data/processed/r0_cache_audit.json` 供 R0b 共用同池）。
+- `src/backtest/pit_universe.py` — **無 look-ahead PIT membership builder**（trailing-60d 成交額 top-K + 上市滿 1y[老股豁免左censored] + 價格下限 10 + 季/年 reselect + 換手率；自檢全綠）。時變 universe 經 `apply_membership()` baked 進 entry 餵 `run_capped`，**不改引擎**。
+- `notebooks/r0_honest_baseline.py` — 完整 live edge（TA+籌碼+block_only regime+vol_target，adjust=True）跑 PIT universe，regime 走 fixed-38 錨定（cache-safe，避免廣池 panel 在 2016 warm 窗打 API）。
+
+**誠實基準（季 reselect，OOS=2022–25 pooled；季 churn ~24–30%）：**
+
+| 臂 | 全期Sharpe | OOS Sharpe | IR vs B | DD | 最差年DD |
+|---|---|---|---|---|---|
+| PIT K=50 | 0.62 | 0.93 | −0.13 | −29% | −17% |
+| PIT K=100 | 0.68 | 0.56 | −0.49 | −23% | −15% |
+| PIT K=150 | 0.75 | 1.21 | +0.12 | −28% | −15% |
+| 廣池(無top-K,參考) | 0.31 | 0.24 | −0.72 | −22% | −14% |
+| 基準B vol0.011 | 0.90 | **0.80** | — | −32% | |
+| 0050 買持 | 1.01 | **0.95** | — | −34% | |
+
+**一句話判定：誠實 baseline 與被動「大致打平、無穩健 alpha」，唯一站得住的相對優勢是 regime 降 DD。** OOS Sharpe 隨 K **非單調**（0.93/0.56/1.21）＝雜訊跡象，中位 0.93；IR vs 基準B 僅 1/3 為正；全期 Sharpe 0.62–0.75 一致輸被動（B 0.90 / 0050 1.01）。**最佳 K=150 的 1.21 是 in-sample cherry-pick → 不採信**（用 OOS 挑 K＝把 OOS 變 in-sample）。DD 較低（PIT −22~−29% vs 被動 −32~−34%）。**廣池無 top-K 反而最差（0.24）→ top-K 流動性限制有用。**
+
+**→ 對 R1 的指示**：用 walk-forward **在每 fold 內 OOS 選 K**，裁決「K=150 的 1.21 是真訊號還是雜訊」＋附錄 B 旗標的「誠實池是否反而需要加格（max_positions）」。R0 ~0.9 比 Phase 9 ≈0.50 高係跑完整 edge（籌碼+adjust），非翻案。**總 Gate 未過 → live 不動。**
 
 ---
 
@@ -97,8 +121,8 @@
 
 ## 觸發與分支（操作摘要）
 
-- **觸發**：`logs/chip_cache_watch.out`（或 harness watcher）報籌碼就緒（≥ ~1400）。現況 53 檔（~3%）、builder 在第 2 輪（除權息 ~89%），法人/融資券是第 3、4 輪 → 樂觀大半天～一天。
-- **branch**：`pit-rebuild`（新）；`main`（live）不動。
-- **執行順序**：前置 → R0 → R-attrib → R1 → R2 →（R3）→ R4 → R5 →（R6）。每步可獨立 checkpoint、回報。
+- **觸發**：✅ 已達成 —— builder 完成、法人∩融資券 **1813 ≥ 1400**、四方完整 **1706**、除權息足以 `adjust=True` 純快取。R0 已執行。
+- **branch**：`pit-rebuild`（R0 產物在此，未 commit）；`main`（live config/src）不動到通過總 Gate。
+- **執行順序**：~~前置~~ ✅ → ~~R0~~ ✅ → **R-attrib / R1（下一步，等使用者指令）** → R2 →（R3）→ R4 → R5 →（R6）。每步獨立 checkpoint、回報。
 
 *版本：v1 | 2026-06-16 | 性質：等乾淨 PIT 資料就緒後的執行 playbook（非定論，每步綁 OOS）*
