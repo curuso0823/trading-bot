@@ -84,6 +84,25 @@
 
 ---
 
+## (g) 事件偵測延伸研究：E4/E5/E7/E7b 全 FAILED、E8 僅規劃（2026-06-18，純沙盒未碰 live）
+
+承 §(f) E1+E2 落地後，沿 `docs/EVENT_DETECTION_RESEARCH.md` roadmap 把「比 MA200 更早/更準的崩盤偵測」逐一試到底——**全部 FAILED，live 一律不動**。每條皆多 agent 沙盒（plan→build→對抗驗證→synthesis）、純快取 0-API、walk-forward OOS（FWD=[2022-25]、唯 2022 OOS 崩盤）、**beta/alpha 嚴格分離**（IRvs基準B 是 beta、0050 自身=+1.00；真 alpha=IRvs0050）、survivorship 上界。
+
+| 研究線 | 內容 | 裁決 | 為何失敗（一句話） |
+|---|---|---|---|
+| **E4** | 第二道防線（5d vol-spike OR from-peak 速度，提前出 15%）| 🟥 FAILED | 牛市假觸發多（累計 −8.8pp vs 0050）、whipsaw↑、alpha FAIL |
+| **E5** | 組合閘（E4 + 外資連續淨賣，≥2 訊號才動）| 🟥 FAILED | 組合閘確壓牛市假觸發(唯一 PASS 子項)但仍不降 DD、增 whipsaw、外資票無貢獻、alpha FAIL |
+| **us_lead_0050** | 美股 ^SOX/SMH/TSM ADR 對 0050 領先性（FinMind `USStockPrice`）| 🔬 領先**真實**(corr 0.55、Granger 單向 p≈1e-115、跨期穩定) | 但 **~99% 在 0050 開盤跳空被吸收、盤中≈隨機 → 不可萃取** |
+| **E7** | 美股半導體當「砍倉**時點**」訊號 | 🟥 FAILED | 賣在跳空後 + 86% 平時假警報反傷；連結構 Gate 都沒過 |
+| **E7b** | 美股半導體「確認延續→砍倉**深度**」（非時點）| 🟥 FAILED | 修好假警報，但 matched-D 對照證 US-conditioning 不如「無條件砍更深」(flat-deep)、且引入深度 whipsaw |
+| **E8** | 新聞情緒 ex-post 研究 | 📋 僅規劃(`docs/E8_PLAN.md`)、**未執行** | 2020 急崩在 FinMind 新聞窗(2020-04)前、唯 2022 OOS 崩盤(n=1)→結構上不可 walk-forward、永不碰 live |
+
+- **共同教訓**：所有「更早/更準崩盤訊號」方向，要嘛在開盤跳空被吸收（美股線）、要嘛假觸發成本 > 防禦效益（E4/E5/E7）、要嘛資料不足以驗證（E8）。**無一翻案 R5「無 alpha、0050 報酬王、regime 僅防禦」。**
+- **負結果中唯一可用線索**：若有明確 drawdown mandate，降 DD 的槓桿＝**flat-deep（直接把 `regime_action` 砍更深，如 0.70/0.60）**——但那是沿 R6 已知前緣的**風險偏好抉擇、非 alpha、非研究新發現**（R6 已掃過並選 0.85；E7b 的 matched-D 對照證實它支配 US-conditioning）。
+- **🟩 live 分隔線**：自 §(f) **E1+E2** 起，live（0050 + MA200 連3日+1%帶-85% overlay）**未再有任何改動**；E4–E8 全為**沙盒研究歸檔、零 live/engine/config 變更**。
+
+---
+
 ## 倉庫清理紀錄（2026-06-17）
 
 - **刪除（舊 active 直接執行路徑）**：`src/signals/score_engine.py`、`src/signals/chip_signal.py`、`src/strategy_engines/active_engine.py`；`main.py` 的 active 任務（pre_market / market_open / intraday_monitor / _emergency_liquidate / afterhours_fill / _within_session / _save·_load_day_state）＋ active 全域 ＋ active 排程分支；`make_engine`/`__init__` 去 ActiveEngine（benchmark-only fail-safe）。
@@ -97,6 +116,7 @@
 - **Phase 6–9 notebooks**：`p6_maxpos_sweep.py`、`p6_exit_linkage.py`、`p7_exit_diag.py`、`p8_walkforward.py`、`p9_concentration.py`、`p9_walkforward.py`、`p9_pit_universe.py`。
 - **早期/旁支/universe-construction/probe notebooks**：見 `notebooks/`（Phase 0–5 建置、a1/a2/exit/sizing/capitulation 旁支、universe 建構＝污染源證據 universe_ai_window 等、API/timing probe）。
 - **whipsaw 修正 / 事件研究（2026-06-18，§(f)）**：文件 `docs/DRAWDOWN_EVENT_STUDY_2020_2022.md`、`docs/EVENT_DETECTION_RESEARCH.md`、`docs/E1_E3_COMPARISON.md`、`docs/E1_E2_WALKFORWARD.md`；notebooks `dca_compare.py`、`dump_drawdown_detail.py`、`e1_nday_confirm.py`、`e2_hysteresis_band.py`、`e3_atr_band.py`、`e1e2_walkforward.py`、`e1e2_combined_validate.py`（純快取；輸出 CSV 在 gitignore 的 `data/processed/`，由 notebook 重生）。
+- **事件偵測延伸研究（2026-06-18，§(g)；全 FAILED/僅規劃、純沙盒未碰 live）**：文件 `docs/E4_E5_COMPARISON.md`、`docs/E7_US_SEMI_DEFENSE.md`、`docs/E7B_DEPTH_MODULATION.md`、`docs/E8_PLAN.md`；notebooks `e4_second_line.py`、`e5_combination_gate.py`、`us_lead_0050.py`、`e7_us_semi_defense.py`、`e7b_depth_modulation.py`（純快取；美股經 FinMind `USStockPrice` 下載至 gitignore 的 `data/raw/finmind_cache/USStockPrice__*.pkl`，由 notebook 重生）。
 - **持久化**：`data/processed/`（r0_cache_audit.json、r1_base_sig.pkl、r_attrib_base.pkl；gitignore 的 cache）。
 
 ## 殘留風險與誠實聲明
