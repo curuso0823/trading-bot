@@ -39,6 +39,8 @@ def _benchmark_cfg() -> dict:
     bm.setdefault("regime_overlay", False)
     bm.setdefault("regime_ma", 200)
     bm.setdefault("regime_action", "half")
+    bm.setdefault("regime_confirm_days", 1)    # E1：連續 N 日確認才轉態（1＝舊每日規則；行為中性預設）
+    bm.setdefault("regime_band_pct", 0.0)      # E2：MA±此比例緩衝帶死區（0.0＝無帶；行為中性預設）
     return bm
 
 
@@ -47,15 +49,58 @@ def realized_vol(close: pd.Series, lookback: int) -> pd.Series:
     return close.astype(float).pct_change().rolling(lookback).std()
 
 
+def _regime_below(close: pd.Series, ma: pd.Series, *, confirm_days: int = 1,
+                  band_pct: float = 0.0) -> pd.Series:
+    """回傳每日『是否處於跌破(reduced)態』的 bool Series（regime overlay 用）。
+
+    **行為中性預設**：confirm_days=1 且 band_pct=0.0 → 逐位等於舊行為 `(close < ma).fillna(False)`。
+    否則啟用「N 日連續確認 + 對稱緩衝帶」狀態機（E1+E2 整併，2026-06 walk-forward 驗證；whipsaw 修正）：
+      full→reduced：close < ma×(1−band_pct) 連續 confirm_days 日才成立；
+      reduced→full：close > ma×(1+band_pct) 連續 confirm_days 日才成立；
+      中間（死區或未滿足確認）維持現態。初始態＝full。
+    MA 暖身不足（NaN）→ 視為「未跌破」、維持 full（與舊行為一致）。
+    狀態機為**因果**（只用當日及之前資料、逐日前進）→ 無前視；live 每日重算全序列取末日值＝同一結果。
+    """
+    cd = max(int(confirm_days), 1)
+    bp = max(float(band_pct), 0.0)
+    if cd <= 1 and bp <= 0.0:
+        return (close < ma).fillna(False)         # 行為中性：逐位等於舊路徑（live R6 預設）
+    c = close.to_numpy(dtype=float)
+    m = ma.to_numpy(dtype=float)
+    n = len(close)
+    out = np.zeros(n, dtype=bool)
+    reduced = False
+    run_below = run_above = 0
+    for i in range(n):
+        if np.isfinite(m[i]):
+            below_band = c[i] < m[i] * (1.0 - bp)
+            above_band = c[i] > m[i] * (1.0 + bp)
+        else:                                      # 暖身 NaN → 不觸發任一邊 → 維持現態（初始 full）
+            below_band = above_band = False
+        run_below = run_below + 1 if below_band else 0
+        run_above = run_above + 1 if above_band else 0
+        if not reduced:
+            if run_below >= cd:
+                reduced = True
+        else:
+            if run_above >= cd:
+                reduced = False
+        out[i] = reduced
+    return pd.Series(out, index=close.index)
+
+
 def vol_target_exposure(close: pd.Series, *, target_daily_vol: float, lookback: int,
                         exposure_cap: float = 1.0,
                         regime_overlay: bool = False, regime_ma: int = 200,
-                        regime_action: str = "half") -> pd.Series:
+                        regime_action: str = "half",
+                        regime_confirm_days: int = 1, regime_band_pct: float = 0.0) -> pd.Series:
     """逐日目標曝險序列（0~cap）。pure：給一條 close 算整段 exposure，回測/單元測試共用。
 
     exposure = clip(target_daily_vol / realized_vol_20d, 0, cap)
-    regime overlay（可選）：close < MA(regime_ma) 當日，exposure ×mult；mult 由 regime_action 決定——
+    regime overlay（可選）：close 處於「跌破(reduced)態」當日，exposure ×mult；mult 由 regime_action 決定——
       "zero"→0、"half"→0.5、或數值 0~1（如 0.85）→保留該比例曝險（live R6＝0.85，最後防線砍至 85%）。
+    「跌破態」由 _regime_below 判定：預設（regime_confirm_days=1, regime_band_pct=0.0）＝舊每日規則
+      `close < MA`；設 N 日確認(E1) / 緩衝帶(E2) 時改用狀態機抑制 whipsaw（行為中性 additive，預設不變）。
     暖身不足（vol 為 NaN）→ 該日 exposure = 0（不下注，保守）。
     """
     close = close.astype(float)
@@ -67,8 +112,8 @@ def vol_target_exposure(close: pd.Series, *, target_daily_vol: float, lookback: 
 
     if regime_overlay:
         ma = close.rolling(int(regime_ma)).mean()
-        below = close < ma                       # MA 暖身不足 → NaN → 視為「未跌破」(不砍)
-        below = below.fillna(False)
+        below = _regime_below(close, ma, confirm_days=int(regime_confirm_days),
+                              band_pct=float(regime_band_pct))   # 預設(1,0.0)＝舊 (close<ma)；N日確認+緩衝帶抑 whipsaw
         ra = regime_action
         if isinstance(ra, str) and ra.lower() == "zero":
             mult = 0.0
@@ -116,6 +161,8 @@ class BenchmarkEngine(StrategyEngine):
         self.regime_overlay: bool = bool(c.get("regime_overlay", False))
         self.regime_ma: int = int(c.get("regime_ma", 200))
         self.regime_action: str = str(c.get("regime_action", "half"))
+        self.regime_confirm_days: int = int(c.get("regime_confirm_days", 1))   # E1 whipsaw 修正（1＝舊行為）
+        self.regime_band_pct: float = float(c.get("regime_band_pct", 0.0))     # E2 whipsaw 修正（0.0＝舊行為）
 
     # ---------- pure 曝險計算 ----------
 
@@ -124,7 +171,8 @@ class BenchmarkEngine(StrategyEngine):
         return vol_target_exposure(
             close, target_daily_vol=self.target_daily_vol, lookback=self.lookback,
             exposure_cap=self.exposure_cap, regime_overlay=self.regime_overlay,
-            regime_ma=self.regime_ma, regime_action=self.regime_action)
+            regime_ma=self.regime_ma, regime_action=self.regime_action,
+            regime_confirm_days=self.regime_confirm_days, regime_band_pct=self.regime_band_pct)
 
     def current_target_exposure(self, close: pd.Series) -> float:
         """今日（序列最後一筆）目標曝險。live 盤前算。"""

@@ -20,6 +20,9 @@ strategy:
     regime_overlay: true    # R6 定稿：啟用＝MA200 最後一道防線（平時滿倉跟 0050，唯 0050 跌破 MA200 才砍倉）
     regime_ma: 200          # 最後防線門檻＝0050 200日均線（canonical、whipsaw 最少；要更快改 120/60）
     regime_action: 0.85     # R6 定稿：跌破 MA200 → 保留 85% 曝險（輕度退場、漲回回滿）；0=全退、0.5=半倉
+    # --- whipsaw 修正（E1+E2 整併，2026-06-18 落地；walk-forward OOS 驗證；預設 1/0.0＝舊每日 MA200 規則）---
+    regime_confirm_days: 3  # E1：連續 N 日跌破 MA200×(1−band) 才砍至 85%、連續 N 日站回 ×(1+band) 才回滿（N=3＝Alvarez 文獻甜蜜點、高原內穩健值）
+    regime_band_pct: 0.01   # E2：MA200 ±1% 對稱緩衝帶死區（≈0050 一日移動）；combined N=3+1% 已過結構 Gate（2022 假穿越 7→1、DD −31.2→−30.5%、牛市/2020 不犧牲）
 
 # --- 排程時間（24h 格式，台灣時區）---
 schedule:

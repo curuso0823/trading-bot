@@ -12,6 +12,7 @@ import pytest
 
 from src.strategy_engines.benchmark_engine import (
     BenchmarkEngine, vol_target_exposure, is_month_first_trading_day, make_engine,
+    _regime_below,
 )
 
 
@@ -88,6 +89,95 @@ def test_regime_overlay_numeric_mult():
         keep = vol_target_exposure(close, target_daily_vol=0.011, lookback=20, exposure_cap=1.0,
                                    regime_overlay=True, regime_ma=20, regime_action=ra)
         assert keep.loc[below_idx] == pytest.approx(base.loc[below_idx] * 0.85, rel=1e-9)
+
+
+# ────────────────────── whipsaw 修正：N 日確認(E1) + 緩衝帶(E2) ──────────────────────
+
+def test_regime_confirm_band_defaults_neutral():
+    """confirm_days=1 + band_pct=0.0（預設）→ 與舊每日 MA 規則逐位相同（行為中性 additive；保 98 綠）。"""
+    n = 120
+    rng = np.random.default_rng(7)
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.015, n))),
+                      index=pd.bdate_range("2020-01-01", periods=n))
+    old = vol_target_exposure(close, target_daily_vol=1.0, lookback=20, exposure_cap=1.0,
+                              regime_overlay=True, regime_ma=20, regime_action=0.85)
+    new = vol_target_exposure(close, target_daily_vol=1.0, lookback=20, exposure_cap=1.0,
+                              regime_overlay=True, regime_ma=20, regime_action=0.85,
+                              regime_confirm_days=1, regime_band_pct=0.0)
+    pd.testing.assert_series_equal(old, new, check_names=False)
+
+
+def test_regime_below_defaults_equal_old_rule():
+    """_regime_below(confirm=1,band=0) 逐位 == 舊 (close < ma).fillna(False)。"""
+    idx = pd.bdate_range("2020-01-01", periods=40)
+    rng = np.random.default_rng(11)
+    close = pd.Series(100 + np.cumsum(rng.normal(0, 1.0, 40)), index=idx)
+    ma = close.rolling(10).mean()
+    got = _regime_below(close, ma, confirm_days=1, band_pct=0.0)
+    expect = (close < ma).fillna(False)
+    pd.testing.assert_series_equal(got, expect, check_names=False)
+
+
+def test_regime_confirm_days_filters_short_breach():
+    """E1：1-2 日假跌破不觸發 reduced（confirm=3）；同序列 confirm=1 會觸發那兩日。"""
+    idx = pd.bdate_range("2020-01-01", periods=10)
+    close = pd.Series([100, 100, 100, 100, 95, 96, 100, 100, 100, 100], index=idx, dtype=float)
+    ma = pd.Series(100.0, index=idx)
+    b1 = _regime_below(close, ma, confirm_days=1, band_pct=0.0)
+    b3 = _regime_below(close, ma, confirm_days=3, band_pct=0.0)
+    assert b1.iloc[4] and b1.iloc[5]      # 每日規則：跌破當日即 reduced
+    assert not b3.any()                   # 僅 2 連跌破 < 3 → 從不轉態（whipsaw 被濾掉）
+
+
+def test_regime_band_deadzone_filters_shallow_breach():
+    """E2：close 僅微跌破 MA（在 1% 帶內）不觸發；無帶則觸發。"""
+    idx = pd.bdate_range("2020-01-01", periods=6)
+    ma = pd.Series(100.0, index=idx)
+    close = pd.Series([100, 100, 99.5, 99.5, 99.5, 99.5], index=idx, dtype=float)  # 跌 0.5% < 1% 帶
+    b0 = _regime_below(close, ma, confirm_days=1, band_pct=0.0)
+    b1pct = _regime_below(close, ma, confirm_days=1, band_pct=0.01)
+    assert b0.iloc[2]                     # 無帶：99.5<100 → reduced
+    assert not b1pct.any()                # 1% 帶：99.5 > 100×0.99=99 → 死區 → 不觸發
+
+
+def test_regime_combined_hysteresis_reentry():
+    """combined N=3+1%：超下帶連 3 日→reduced；死區維持；站回上帶連 3 日才 full。"""
+    idx = pd.bdate_range("2020-01-01", periods=14)
+    ma = pd.Series(100.0, index=idx)
+    close = pd.Series([100, 98, 98, 98, 100.5, 100.5, 101.5, 101.5, 101.5, 100, 100, 100, 100, 100],
+                      index=idx, dtype=float)
+    b = _regime_below(close, ma, confirm_days=3, band_pct=0.01)   # 下帶99 上帶101
+    assert not b.iloc[2]                  # 98 只 2 連 < 3 → 尚未 reduced
+    assert b.iloc[3]                      # 第 3 連跌破 → reduced
+    assert b.iloc[4] and b.iloc[5]        # 100.5 在死區(99~101) → 維持 reduced
+    assert b.iloc[7]                      # 101.5 僅 2 連 > 上帶 → 仍 reduced
+    assert not b.iloc[8]                  # 第 3 連站回上帶 → full
+
+
+def test_benchmark_engine_reads_confirm_band_config():
+    """BenchmarkEngine 從 config 讀 regime_confirm_days / regime_band_pct 並套進 exposure_series。"""
+    cfg = {"symbol": "0050", "target_daily_vol": 1.0, "vol_lookback": 20, "exposure_cap": 1.0,
+           "rebalance_band": 0.05, "monthly_rebalance": True, "regime_overlay": True,
+           "regime_ma": 20, "regime_action": 0.85, "regime_confirm_days": 3, "regime_band_pct": 0.01}
+    eng = BenchmarkEngine(cfg)
+    assert eng.regime_confirm_days == 3
+    assert eng.regime_band_pct == pytest.approx(0.01)
+    idx = pd.bdate_range("2020-01-01", periods=60)
+    rng = np.random.default_rng(3)
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.02, 60))), index=idx)
+    got = eng.exposure_series(close)
+    expect = vol_target_exposure(close, target_daily_vol=1.0, lookback=20, exposure_cap=1.0,
+                                 regime_overlay=True, regime_ma=20, regime_action=0.85,
+                                 regime_confirm_days=3, regime_band_pct=0.01)
+    pd.testing.assert_series_equal(got, expect, check_names=False)
+
+
+def test_benchmark_engine_default_config_is_neutral():
+    """未給 confirm/band 的 config → 引擎預設 confirm=1/band=0（舊行為，行為中性）。"""
+    eng = BenchmarkEngine({"symbol": "0050", "regime_overlay": True, "regime_ma": 200,
+                           "regime_action": 0.85})
+    assert eng.regime_confirm_days == 1
+    assert eng.regime_band_pct == 0.0
 
 
 # ────────────────────── 月度標記 ──────────────────────
