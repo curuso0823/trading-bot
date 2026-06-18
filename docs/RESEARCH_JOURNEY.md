@@ -7,7 +7,7 @@
 
 ## TL;DR（一段話）
 
-原始「手挑 35 檔 + 籌碼/TA + ATR 移動停損」主動策略的帳面績效（年化 12.7% / Sharpe 1.16 / DD −16%）**經證實大半來自後見之明污染**（手挑 universe 用未來資訊事後挑贏家）。在**無 look-ahead 的乾淨 PIT 資料**上從零重建（R0→R5）後，**誠實池無可前瞻複製的 alpha**：沒有任何訊號層（TA / 籌碼 / 動量）加得出穩健或統計顯著的超額；唯一真實且 K-穩健的東西是 **regime 的降-回撤（防禦、非 alpha）**，而它在風險對齊比較下**仍不顯著、且打不贏單純持有 0050**。據此**誠實出口＝被動為主**：live 已改為 **0050 vol-target + MA200 overlay（跌破 MA200 留倉 85% / 漲回回滿）**＝R6。舊 active 策略的**直接執行路徑已刪除**，研究過程全數保留並由本報告統整。⚠️ 所有 OOS 數字仍是**上界**（FinMind 無下市資料 → survivorship 無法消除）。
+原始「手挑 35 檔 + 籌碼/TA + ATR 移動停損」主動策略的帳面績效（年化 12.7% / Sharpe 1.16 / DD −16%）**經證實大半來自後見之明污染**（手挑 universe 用未來資訊事後挑贏家）。在**無 look-ahead 的乾淨 PIT 資料**上從零重建（R0→R5）後，**誠實池無可前瞻複製的 alpha**：沒有任何訊號層（TA / 籌碼 / 動量）加得出穩健或統計顯著的超額；唯一真實且 K-穩健的東西是 **regime 的降-回撤（防禦、非 alpha）**，而它在風險對齊比較下**仍不顯著、且打不贏單純持有 0050**。據此**誠實出口＝被動為主**：live 已改為 **0050 vol-target + MA200 overlay（跌破 MA200 留倉 85% / 漲回回滿）**＝R6。舊 active 策略的**直接執行路徑已刪除**，研究過程全數保留並由本報告統整。⚠️ 所有 OOS 數字仍是**上界**（FinMind 無下市資料 → survivorship 無法消除）。**（2026-06-18 後續）** 再對該防禦 overlay 做 **whipsaw 修正**（E1 N 日確認 + E2 緩衝帶），經 walk-forward 驗證後整併入 live（combined N=3 + 1% 帶）：**結構 Gate PASS（降 whipsaw、DD 不惡化、牛市不犧牲）、但 alpha 仍 FAIL（對同 beta 0050 無顯著超額）**＝結構性微調、非 alpha（見 §(f)）。
 
 ---
 
@@ -73,6 +73,17 @@
 
 ---
 
+## (f) E1+E2 whipsaw 修正研究 + 整併落地（2026-06-18）
+
+承 R6 落地後的事件研究：2020(−27%)/2022(−31%) 回撤事件歸因（`docs/DRAWDOWN_EVENT_STUDY_2020_2022.md`）發現 MA200 daily 規則兩盲區＝**初跌無保護（滯後）+ whipsaw（2022 在 3.5 週 7 次穿越）**；事件偵測研究（`docs/EVENT_DETECTION_RESEARCH.md`）裁決新聞面**不可回測**（FinMind 新聞僅 2020-04 起＝1 熊市週期）→ 先做純快取的 whipsaw 修正。
+
+- **沙盒 E1-E3（in-sample 細網格，`docs/E1_E3_COMPARISON.md`；3 沙盒 agent 各建一支新 notebook）**：E1 N 日連續確認 / E2 對稱緩衝帶 / E3 ATR 帶。三者 OOS Sharpe 皆**平滑高原**（全距 ≪ δ=0.51＝無 cherry-pick、亦無 alpha）；**whipsaw 削減是唯一單調效果（2022 flips 7→1）**。排名 E1>E2>E3（E3 高 K 反噬、暫緩）。
+- **正式 walk-forward（`docs/E1_E2_WALKFORWARD.md`、`notebooks/e1e2_walkforward.py`）**：擴張窗 [2018,Y-1]→Y、DD floor 重錨同族 current-live。**結構 Gate PASS（跨 4 fold OOS：DD 不惡化且優於基準B/0050、whipsaw↓、牛市不犧牲）；alpha Gate FAIL。** ⚠️ **方法論修正**：「IRvs基準B +1.13」是 **beta 非 alpha**（基準B de-risked；**0050 自身 IRvsB=+1.00** 為證）→ 真 alpha 檢定＝同 beta 的 **IRvs0050 = −0.18/−0.27（無）**。選參「測不準」（E1 跨 fold 跳動、E2 rail to grid edge）＝平滑高原徵兆＝任何小 N/帶 ≈ 等價、效益與選參無關。
+- **整併落地（`notebooks/e1e2_combined_validate.py`；使用者拍板 combined N=3 + band=1.0%）**：把 R6 overlay 的 below 判定由「每日 MA200」改為「**連 3 日跌破 MA200×0.99 才砍至 85%、連 3 日站回 ×1.01 才回滿**」。落地＝`config/settings.yaml` 新增 `regime_confirm_days: 3`/`regime_band_pct: 0.01`；引擎 `benchmark_engine.py` 新增 `_regime_below` 狀態機 + `vol_target_exposure(regime_confirm_days=1, regime_band_pct=0.0)` **additive（預設＝舊行為、行為中性、98 原測不變）**。效果（2018-25 純快取、survivorship 上界）：**2022 假穿越 7→1、最差前進年 DD −31.2→−30.5%、交易 126→105、2018/2022 報酬+Sharpe 皆優於舊規則、2020 V 急崩無 over-lag**。3 個獨立 agent 驗證全過（行為中性 max|Δ|=0、新 config ≡ 沙盒數字 17/17、對抗 review 無 look-ahead）；`pytest` **105 passed**（98+7）。
+- **誠實定位**：**現行防禦 overlay 的結構性降 whipsaw 微調、非 alpha**（R5 未翻案、0050 買持全期報酬仍王）；rollback＝config 兩鍵回 1/0.0（復舊每日 MA200 規則）。
+
+---
+
 ## 倉庫清理紀錄（2026-06-17）
 
 - **刪除（舊 active 直接執行路徑）**：`src/signals/score_engine.py`、`src/signals/chip_signal.py`、`src/strategy_engines/active_engine.py`；`main.py` 的 active 任務（pre_market / market_open / intraday_monitor / _emergency_liquidate / afterhours_fill / _within_session / _save·_load_day_state）＋ active 全域 ＋ active 排程分支；`make_engine`/`__init__` 去 ActiveEngine（benchmark-only fail-safe）。
@@ -85,6 +96,7 @@
 - **PIT 重建 notebooks**：`r0_data_audit.py`、`r0_honest_baseline.py`、`r1_walkforward.py`、`r_attribution.py`、`r5_alpha_verdict.py`、`r6_overlay_select.py`、`r6_retreat_sweep.py`、`r6_final_backtest.py`、`r6_bh_half_backtest.py`、`r6_retreat_finegrid.py`、`benchmark_backtest.py`。
 - **Phase 6–9 notebooks**：`p6_maxpos_sweep.py`、`p6_exit_linkage.py`、`p7_exit_diag.py`、`p8_walkforward.py`、`p9_concentration.py`、`p9_walkforward.py`、`p9_pit_universe.py`。
 - **早期/旁支/universe-construction/probe notebooks**：見 `notebooks/`（Phase 0–5 建置、a1/a2/exit/sizing/capitulation 旁支、universe 建構＝污染源證據 universe_ai_window 等、API/timing probe）。
+- **whipsaw 修正 / 事件研究（2026-06-18，§(f)）**：文件 `docs/DRAWDOWN_EVENT_STUDY_2020_2022.md`、`docs/EVENT_DETECTION_RESEARCH.md`、`docs/E1_E3_COMPARISON.md`、`docs/E1_E2_WALKFORWARD.md`；notebooks `dca_compare.py`、`dump_drawdown_detail.py`、`e1_nday_confirm.py`、`e2_hysteresis_band.py`、`e3_atr_band.py`、`e1e2_walkforward.py`、`e1e2_combined_validate.py`（純快取；輸出 CSV 在 gitignore 的 `data/processed/`，由 notebook 重生）。
 - **持久化**：`data/processed/`（r0_cache_audit.json、r1_base_sig.pkl、r_attrib_base.pkl；gitignore 的 cache）。
 
 ## 殘留風險與誠實聲明
