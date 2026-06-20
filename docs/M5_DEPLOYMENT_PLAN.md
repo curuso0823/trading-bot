@@ -299,3 +299,35 @@ strategy:
 - 🟡 **零股 live 深度＝DEFERRED**（spike 跑在週六休市）：端點/簿結構正確、symbol 全有效；Fri-18 快照＝0050/00981A 厚、00991A 中、00635U 薄、**00864B 極薄（L1 106 股、價差寬）**。下個交易日 09:10–13:30 須複驗小單可成交性（尤其 00864B/00635U）。
 
 **⇒ 史料來源 BLOCKER 已解（FinMind、both paths、已驗證）。Phase C 剩餘 gating＝① 市場時段（下個交易日 09:10–13:30）零股深度複驗（尤其 00864B 106 股/00635U 薄）；② 歸零重建遷移（含清 `allocator_state.json`、刪 stale `start.sh.save`）；③ benchmark live MA200 修正已就緒、`main.py` 重啟即生效（不即觸發砍倉）。**
+
+**已落地（2026-06-19c）：** benchmark live 已重啟（launchd `com.tradingbot.start` 重載 + kickstart，跑 FinMind/MA200 修正碼，週一 08:30 自動交易）；odd-lot 複驗已排程（launchd `com.tradingbot.oddlotcheck`，週一 10:00 自動跑 `deploy/oddlot_depth_check.py`、結果寫 log + LINE）；本批改動已 commit 於分支 `m5-allocator`（未 push、`main` 不動）。
+
+---
+
+## 13. Phase C 遷移 runbook（執行清單；2026-06-19c planning — 尚未執行）
+
+**前置 Gate（全綠才遷移）：**
+1. 週一 10:00 odd-lot 深度複驗 **PASS**（5 檔小單可成交，尤其 00864B/00635U）。
+2. `pytest` 326 綠、cross-val OK、`allocator` 區塊對齊 §3.7。
+3. M2 決策：首波 `allocator.M2.enabled: false`（先 M0+M1，§10a）。
+4. benchmark MA200 修正已 live（✅ 已完成）。
+
+**🟥 關鍵發現（遷移必讀）— 冷啟動建倉缺口（migration planning 審 rebalancer 抓到）：**
+`PortfolioRebalancer` 的 `BUY_ORDER=[0050,00981A,00991A,00635U]`、`SELL_ORDER=[00991A,00981A,00635U,0050]` **皆不含 00864B**（設計：00864B/MMF＝地板 ballast、只 drift 管理、rebalancer 不主動買賣）。
+→ **從全現金「讓 allocator 自己建倉」會漏掉 00864B(11.5%)**：實測語意＝買 0050 35/981 16/991 16/635U 10（=77%）後，**00864B 不被買（停 0）、殘餘現金全灌進 MMF（→ ~23% 肥倉）**＝錯誤配置（缺債腿、MMF 雙倍）。
+→ **歸零重建必須有一次性「初始建倉」步驟**把 6 腿（含 00864B）一次建到 target，再交給 allocator 做後續 drift 管理。
+
+**遷移步驟（建議非交易時段：週一 15:00 收盤後 或 週二 08:30 前；避免切換中下單）：**
+1. **停 bot**（graceful）：`bash deploy/macos/stop_bot.sh`（SIGTERM → graceful_shutdown）；確認進程停。
+2. **備份**：`cp data/processed/{paper_account,positions}.json <backup-時間戳>/`。
+3. **初始建倉（一次性、補冷啟缺口）** — 用 `deploy/build_initial_book.py`（**已交付**；dry-run 已驗證從全現金 100k 建出 6 腿到 target 含 00864B[35/16/16/10/11.5/11.5]）：讀現金/持倉 → 賣 0050 超額 → 按 target 對 5 檔 ETF 下 Fugle 零股單（book-walk 價、先賣後買、現金縮量、硬地板）+ 殘餘現金 `SyntheticMMF.deposit`。**含 00864B**。預設 dry-run；`--execute` 才下單，且**會先搶單例鎖→ bot 在跑時拒絕執行**（防帳本雙寫）。建議市場時段跑（真實零股簿）。
+4. **清 allocator runtime state**：刪 `data/processed/allocator_state.json`（留空→首跑視為已變、不誤觸發）；`mmf_sleeve.json` 由步驟 3 建。
+5. **切 config**：`strategy.mode: benchmark → allocator`；確認 `allocator.M2.enabled: false`。
+6. **重啟**：`launchctl kickstart -k gui/$(id -u)/com.tradingbot.start`（或等次日 08:30）→ `make_engine` 回 AllocatorEngine。
+7. **首次 allocator rebalance**：6 腿已在 target（drift≈target）→ 帶寬閘 hold、低 churn；regime_on（FinMind MA200）/ usd（M2 off=0）正常。確認無大額重建 churn。
+8. **驗收**：持倉 ≈ target（零股粒度）、MMF≈11.5%、00864B≥10% 地板、log 無錯、通知正常。
+9. **監看 ≥十幾天**（§10d）：regime 觸發頻率、月初 rebalance、DD、零股可成交性、MMF accrual。
+10. **Rollback**：`mode→benchmark` + 還原備份 json + 重啟（或接受持有 6 ETF 手動處理）。
+11. **M2 後上**：M0+M1 paper 穩定 + FRED 線上再驗 → `M2.enabled: true` + 影子比對一次再正式。
+
+**剩餘 Phase C 交付（遷移前要做）：** ① ✅ `deploy/build_initial_book.py`（已交付、dry-run 驗證、`--execute`+單例鎖防雙寫）；② 週一 odd-lot 複驗 PASS 確認；③〔可選但建議〕為 `PortfolioRebalancer` 補「00864B 偏離回補」路徑，根治冷啟缺口、避免日後再踩。
