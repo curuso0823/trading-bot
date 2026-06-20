@@ -248,16 +248,24 @@ class BenchmarkEngine(StrategyEngine):
 
 
 def make_engine(score_engine=None):
-    """回傳 live 策略引擎（benchmark 被動：0050 波動目標 + MA200 overlay）。
+    """回傳 live 策略引擎。
 
-    2026-06-17 起 live 僅 benchmark（舊 active 籌碼策略執行路徑已移除）。
-    mode 非 "benchmark" → 記錄警告但仍回 BenchmarkEngine（fail-safe，不返回死類型/不誤動）。
-    score_engine 參數保留以維持呼叫端簽章相容（benchmark 不使用）。
+    - mode == "allocator"（M5 6 資產 Asset Allocator）→ AllocatorEngine（additive、§11.3）。
+    - 其餘（含 "benchmark"）→ BenchmarkEngine（0050 波動目標 + MA200 overlay）；
+      mode 非 benchmark/allocator → 記錄警告但仍 fail-safe 回 BenchmarkEngine（不返回死類型/不誤動）。
+
+    2026-06-17 起 live 僅 benchmark（舊 active 籌碼策略執行路徑已移除）；
+    2026-06-19 起新增 allocator 路徑（mode-gated，僅 strategy.mode=="allocator" 時生效）。
+    score_engine 參數保留以維持呼叫端簽章相容（benchmark/allocator 皆不使用）。
     """
     from loguru import logger
 
     mode = str((load_settings().get("strategy", {}) or {}).get("mode", "benchmark")).lower()
+    if mode == "allocator":
+        from src.strategy_engines.allocator_engine import AllocatorEngine
+        logger.info("策略引擎：allocator（6 資產 Asset Allocator：M0 帶寬 + M1 de-risk + M2 現金 tilt）")
+        return AllocatorEngine()
     if mode != "benchmark":
-        logger.warning(f"strategy.mode={mode!r} 非 benchmark（active 已移除）→ fail-safe 改用 benchmark")
+        logger.warning(f"strategy.mode={mode!r} 非 benchmark/allocator → fail-safe 改用 benchmark")
     logger.info("策略引擎：benchmark（0050 波動目標 + MA200 overlay 被動策略）")
     return BenchmarkEngine()

@@ -51,6 +51,24 @@ class PaperBroker:
     def get_balance(self) -> float:
         return float(self._cash)
 
+    def adjust_cash(self, delta: float) -> float:
+        """非交易的現金增減（如 allocator 的 SyntheticMMF cash↔sleeve 轉移）。
+
+        delta>0：入帳（MMF→cash 贖回）；delta<0：出帳（cash→MMF 申購）。
+        受不透支保護：出帳不得使現金 < 0（clip 到 0，回傳『實際變動量』；
+        呼叫端據此調整對側 MMF 轉移量以維持守恆）。回傳實際變動的現金（已 clip）。
+
+        ⚠️ benchmark 執行路徑不呼叫此法（allocator-only、additive）。
+        """
+        delta = float(delta)
+        if delta < 0 and -delta > self._cash:
+            delta = -self._cash          # 不透支：最多扣到 0
+        self._cash += delta
+        if self._cash < 0:               # 浮點殘差保護
+            self._cash = 0.0
+        self._save()
+        return float(delta)
+
     def get_positions(self) -> list[dict]:
         return [{"stock_id": sid, "quantity": p["quantity"], "cost": p["cost"],
                  "pnl": 0.0, "last_price": p["cost"]}

@@ -1,6 +1,6 @@
-"""data/fetcher：反向還原（除權息 + 分割偵測）"""
+"""data/fetcher：反向還原（除權息 + 分割偵測）+ T+1 完整收盤輔助"""
 import pandas as pd
-from src.data.fetcher import FinMindFetcher
+from src.data.fetcher import FinMindFetcher, completed_daily_closes
 
 
 def _df(dates, closes):
@@ -39,3 +39,27 @@ def test_no_events_keeps_prices():
     div = pd.DataFrame(columns=["date", "before_price", "after_price"])
     out = FinMindFetcher._apply_back_adjust(df, div)
     assert list(out["close"]) == [100.0, 101.0, 99.5]
+
+
+# ───────── completed_daily_closes（allocator T+1 紀律：剔除今日未完成 bar）─────────
+
+def test_completed_daily_closes_drops_today_bar():
+    """盤中含今日 in-progress bar → 剔除；末筆＝昨日完整收盤（對齊 sandbox regime shift(1)）。"""
+    from datetime import date
+    df = _df(["2026-06-17", "2026-06-18", "2026-06-19", "2026-06-20"],
+             [100.0, 101.0, 102.0, 103.0])
+    out = completed_daily_closes({"0050": df}, date(2026, 6, 20))
+    s = out["0050"]
+    assert list(s.index) == list(pd.to_datetime(["2026-06-17", "2026-06-18", "2026-06-19"]))
+    assert 103.0 not in list(s.values)        # 今日（未完成）bar 已剔除
+    assert s.iloc[-1] == 102.0                # 末筆＝昨日完整收盤
+
+
+def test_completed_daily_closes_empty_and_missing():
+    """空 / None / 無 close 欄 → 回空 Series（不崩）。"""
+    from datetime import date
+    out = completed_daily_closes(
+        {"A": pd.DataFrame(), "B": None,
+         "C": pd.DataFrame({"date": pd.to_datetime(["2026-06-18"]), "vol": [1]})},
+        date(2026, 6, 20))
+    assert out["A"].empty and out["B"].empty and out["C"].empty

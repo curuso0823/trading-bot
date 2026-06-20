@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Phase C 上線前「盤中零股深度」複驗：每週一 10:00（本機=UTC+8=Taipei，盤中）。
+     __PROJECT_DIR__ 由 install_oddlotcheck（或 install.sh 風格 sed）換成實際路徑。
+     read-only、不下單；驗完移除： launchctl bootout gui/$(id -u)/com.tradingbot.oddlotcheck -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tradingbot.oddlotcheck</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROJECT_DIR__/.venv/bin/python</string>
+        <string>__PROJECT_DIR__/deploy/oddlot_depth_check.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <!-- 每週一 10:00（Weekday 1=Mon；盤中零股 09:10–13:30，10:00 簿較厚） -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>PYTHONUTF8</key>
+        <string>1</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__PROJECT_DIR__/logs/oddlot_check.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__PROJECT_DIR__/logs/oddlot_check.err.log</string>
+</dict>
+</plist>

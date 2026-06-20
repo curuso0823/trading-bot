@@ -295,3 +295,78 @@ class FugleFetcher:
         except Exception as e:
             logger.error(f"Fugle K線失敗 | {stock_id} | {e}")
             return pd.DataFrame()
+
+    # ---------- 多標的並行（allocator：6 資產一次取數）----------
+
+    def get_candles_multi(self, symbols, start_date: str, end_date: str = None,
+                          timeframe: str = "D", max_workers: int = 6) -> dict[str, pd.DataFrame]:
+        """
+        並行取多標的歷史K線（ThreadPool），逐檔回 {symbol: DataFrame}。
+        沿用既有 get_candles（同欄位/同排序/同 fallback 行為）；單檔失敗回該檔空 DataFrame、不影響其他檔。
+        allocator 路徑用此一次抓 6 資產（MMF 為合成 NAV、不在此取數，由呼叫端排除）。
+        max_workers 預設 6（對齊 data.scan_workers 平衡限流）。
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        syms = list(symbols)
+        out: dict[str, pd.DataFrame] = {s: pd.DataFrame() for s in syms}
+        if not syms:
+            return out
+        if not self.client:
+            return out
+
+        def _one(sym: str) -> tuple[str, pd.DataFrame]:
+            try:
+                return sym, self.get_candles(sym, start_date, end_date, timeframe)
+            except Exception as e:                       # get_candles 已內含 try；此為雙重保險
+                logger.error(f"Fugle 多標的K線失敗 | {sym} | {e}")
+                return sym, pd.DataFrame()
+
+        workers = max(1, min(int(max_workers), len(syms)))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            for sym, df in ex.map(_one, syms):
+                out[sym] = df
+        return out
+
+    def get_odd_quotes_multi(self, symbols, max_workers: int = 6) -> dict[str, dict]:
+        """
+        並行取多標的盤中零股報價（type=oddlot），逐檔回 {symbol: quote dict}。
+        便利包裝：對每檔呼叫既有 get_realtime_quote(sym, odd=True)（簽名/行為不變）。
+        allocator rebalance 時一次取 5 檔 ETF 的零股薄帳（餵 odd_lot_fill book-walk 成交）。
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        syms = list(symbols)
+        out: dict[str, dict] = {s: {} for s in syms}
+        if not syms or not self.client:
+            return out
+
+        def _one(sym: str) -> tuple[str, dict]:
+            return sym, self.get_realtime_quote(sym, odd=True)
+
+        workers = max(1, min(int(max_workers), len(syms)))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            for sym, q in ex.map(_one, syms):
+                out[sym] = q
+        return out
+
+
+# ---------- T+1 完整收盤輔助（allocator regime / ref-price 用）----------
+
+def completed_daily_closes(candles_by_sym: dict, today) -> dict:
+    """從多標的日K（{sym: DataFrame}）取「今日未完成 bar 已剔除」的完整收盤 Series。
+
+    T+1 紀律（對齊 sandbox regime `shift(1)`）：盤中（如 09:12）即時源可能回今日尚未收盤的
+    in-progress bar；以此算 MA200/regime 會用到「未定價且早一日」的值 → 一律剔除「日期 ≥ today」
+    的 bar，只保留完整交易日收盤。`compute_regime_on` 的契約即要求餵『截至昨日(含)收盤』序列。
+    回 {sym: close Series(index=date)}；空/無 close 的檔 → 空 Series。
+    """
+    cut = pd.Timestamp(today)
+    out: dict = {}
+    for sym, df in (candles_by_sym or {}).items():
+        if df is None or getattr(df, "empty", True) or "close" not in getattr(df, "columns", []):
+            out[sym] = pd.Series(dtype=float)
+        else:
+            s = df.set_index("date")["close"].astype(float)
+            out[sym] = s[s.index < cut]
+    return out
