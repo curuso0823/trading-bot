@@ -185,7 +185,8 @@ class BenchmarkEngine(StrategyEngine):
 
     def decide_rebalance(self, equity: float, cash: float, current_qty: int,
                          price: float, target_exposure: float,
-                         force_monthly: bool = False) -> RebalanceAction:
+                         force_monthly: bool = False,
+                         slippage: float = 0.0) -> RebalanceAction:
         """給定權益/現金/現有持股/現價/目標曝險 → 算出再平衡動作。
 
         equity:  總權益（cash + 持倉市值），目標市值 = equity × target_exposure。
@@ -221,10 +222,14 @@ class BenchmarkEngine(StrategyEngine):
             cc = load_config()["cost"]
             buy_rate = float(cc["buy_fee_rate"])
             min_fee = int(cc.get("min_fee_odd", 1)) if lot == 1 else int(cc["min_fee"])
+            # 現金約束須用「實際成交價」估：呼叫端以 fill = round(price×(1+slippage), 2) 下單，
+            # 故 amt 也用同一 exec_px；否則目標曝險≈100% 全現金時會差一個 slippage 而 insufficient_cash。
+            # slippage=0（預設/單元測試）→ exec_px=price，與舊版逐位相同（additive 行為中性）。
+            exec_px = price if slippage == 0.0 else round(price * (1.0 + slippage), 2)
             buyable = delta
             # 逐步縮量直到「成交額 + 手續費 ≤ 可用現金」（與 capped_sim 同口徑）
             while buyable >= 1:
-                amt = price * buyable * lot
+                amt = exec_px * buyable * lot
                 fee = max(round(amt * buy_rate), min_fee)
                 if amt + fee <= cash:
                     break

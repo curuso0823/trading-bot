@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- 每日 08:30 啟動交易 bot。__PROJECT_DIR__ 由 install.sh 換成實際路徑。 -->
+<!-- 24/7 常駐交易 bot。__PROJECT_DIR__ 由 install.sh 換成實際路徑。 -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -15,18 +15,17 @@
     <key>WorkingDirectory</key>
     <string>__PROJECT_DIR__</string>
 
-    <!-- 每天 08:30（本機時間 = UTC+8，與 bot 內建 Asia/Taipei 排程一致） -->
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>8</integer>
-        <key>Minute</key>
-        <integer>30</integer>
-    </dict>
-
-    <!-- 不在載入/登入時自動啟動，只在 08:30 觸發；崩潰重啟由 supervisor 處理，故不設 KeepAlive -->
+    <!-- 24/7 常駐（取代舊的每日 08:30 StartCalendarInterval）：
+         RunAtLoad=登入即啟動；KeepAlive=任何退出（含優雅關閉 code 0）launchd 立即重啟。
+         bot 內建 APScheduler(Asia/Taipei) 只在交易日盤中動作（非交易日 is_trading_day() 自動跳過）；
+         start_bot.sh 內的 caffeinate 防 idle 睡眠（需保持筆電開蓋，闔蓋仍會強制睡眠）。
+         停機維護（如初始建倉）＝launchctl bootout gui/$(id -u)/com.tradingbot.start；
+         更新程式碼＝launchctl kickstart -k gui/$(id -u)/com.tradingbot.start。 -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
 
     <key>EnvironmentVariables</key>
     <dict>

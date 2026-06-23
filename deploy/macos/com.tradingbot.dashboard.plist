@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 24/7 監控 dashboard（Python http.server, port 8787, 綁 0.0.0.0 供手機/區網看）。
+     __PROJECT_DIR__ 由 install.sh 換成實際路徑。RunAtLoad 登入即起；KeepAlive 死了重啟。
+     手機網址：http://<本機區網IP>:8787（需同一 Wi-Fi；macOS 防火牆若開須放行）。 -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tradingbot.dashboard</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROJECT_DIR__/.venv/bin/python</string>
+        <string>__PROJECT_DIR__/dashboard.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DASHBOARD_HOST</key>
+        <string>0.0.0.0</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>PYTHONUTF8</key>
+        <string>1</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__PROJECT_DIR__/logs/dashboard.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__PROJECT_DIR__/logs/dashboard.err.log</string>
+</dict>
+</plist>

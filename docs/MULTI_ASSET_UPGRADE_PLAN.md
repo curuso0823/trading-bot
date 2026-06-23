@@ -1,6 +1,12 @@
 # MULTI_ASSET_UPGRADE_PLAN — 0050 →「4+1」五資產升級 ＋ 資產分配器（Asset Allocator）計畫
 
-> **狀態：計畫（PLAN）階段 — 純規劃文件，未改任何 code / config / live。** 建立 2026-06-19。
+> ## ✅ 狀態更新（2026-06-23）：本計畫的資產分配器已實作並上線 paper（`config/settings.yaml strategy.mode: allocator`，M0+M1+M2 三層全開）。
+> - **live＝6 資產 allocator**：0050 35% / 00981A 16% / 00991A 16% / 00635U 10% / 00864B 11.5% / 合成台幣 MMF 11.5%；本金 NT$150,000、mode=paper（Fugle 盤中零股、模擬撮合）。M2 於 2026-06-23 實測抓真資料（FRED `fredgraph.csv` 公開端點、免 key）後上線。
+> - **對應 live 程式**：`src/strategy_engines/allocator_engine.py`、`main.py` allocator 任務、`src/data/macro_fetcher.py`（M2 MacroMonitor）、`src/execution/mmf_sleeve.py`（合成 MMF）、`deploy/build_initial_book.py`（初始建倉）。
+> - **定位不變（勿讀成翻案）**：allocator＝使用者選定的多資產分散+regime 風控，**非經證實 alpha**；R5「無穩健 alpha、0050 報酬王」仍成立、未翻案；此為鐵則#2「使用者拍板部署」分支的 **paper 評估**。**未新增任何 alpha 宣稱。**
+> - 以下為**原始設計/規格**；實作真相見 **CLAUDE.md** 與 **`docs/M5_DEPLOYMENT_PLAN.md`**。文中凡標「未實作 / 待實作 / 尚未部署 / live 未動」等未來式者，均已被本橫幅 supersede（並就地加註 ✅）。
+>
+> **狀態（原始，2026-06-19）：計畫（PLAN）階段 — 純規劃文件，未改任何 code / config / live。** 建立 2026-06-19。**〔✅ 已於 2026-06-23 實作上線（M0+M1+M2），此行為歷史狀態。〕**
 > **定位：** 把 live 從單一 0050 演進為「4+1」五資產組合，並以一個**規則化「資產分配器」overlay** 即時監測兩個 regime（AI/股票下行、美元/利率）、在鎖定戰略權重周圍做**有界跨檔互換**。
 > **鐵則全程適用（CLAUDE.md）：** 總 Gate 未過前 **live 全不動**；每個實驗綁 **walk-forward OOS**；回測**純快取、0 API**；引擎改動須 **additive 行為中性**；**survivorship → 所有 OOS 為上界**；參數**細網格**；**不自動 push、commit 僅在使用者明說**。
 > **這是 R5/E1–E8 之後的延伸：** 主動選股無穩健 alpha、0050 報酬王、唯 regime 防禦真但不顯著。本計畫不推翻這些；分配器以**防禦/再平衡**為本,任何「切換 alpha」必須 OOS 自證,否則 fallback 到靜態再平衡。
@@ -15,7 +21,7 @@
   2. **美元/利率** → 在 USD sleeve（00864B、00635U 的 USD 成分）與台幣 sleeve 間做**慢速 macro tilt**（觸發點＝US CPI 鬆動→Fed 轉降息）。
 - **off 狀態 ≡ 靜態帶寬再平衡**（additive 行為中性的 baseline）。
 - **最大誠實限制：兩檔主動 ETF <1 年資料、從未經歷空頭** → 分配器的下行邏輯只能在 **0050 歷史**上 walk-forward，主動以「高 β 0050」代理 + caveat；其真實空頭行為**無法驗證**。
-- **分階段 M0→M4**，每階段沙盒研究→walk-forward→過 Gate→使用者拍板才動 live；未過則**退回 M0 靜態再平衡**（仍是有效的分散升級）。
+- **分階段 M0→M4**，每階段沙盒研究→walk-forward→過 Gate→使用者拍板才動 live；未過則**退回 M0 靜態再平衡**（仍是有效的分散升級）。**〔✅ 2026-06-23：M0+M1+M2 三層皆已實作並上線 paper（非退回 M0）；以下分階段敘述為原始規劃路徑。〕**
 
 ---
 
@@ -23,7 +29,7 @@
 
 - **現 live**：benchmark 被動＝0050 vol-target（target_daily_vol=1.0＝平時 100% 跟 0050）＋ **MA200 regime overlay**（E1+E2：連 3 日跌破 MA200×0.99、±1% 緩衝帶 → 砍至 85%／`regime_action=0.85`）。引擎 `src/strategy_engines/benchmark_engine.py` ＋ `main.py` benchmark 任務。
 - **上一步已完成（研究/計畫,未改碼）**：5 資產**戰略倉位比例定案**（§2）＋ 標的真相查證（見記憶 `portfolio-expansion-5-asset`）。
-- **本步＝策略設計**，核心交付＝**資產分配器**（本檔）。使用者明示這是「計畫」任務。
+- **本步＝策略設計**，核心交付＝**資產分配器**（本檔）。使用者明示這是「計畫」任務。**〔✅ 2026-06-23：計畫已落地——allocator（M0+M1+M2）已實作並上線 paper，`config/settings.yaml strategy.mode: allocator`；本檔自此為原始設計/規格紀錄。〕**
 
 ---
 
@@ -113,17 +119,17 @@
 - **✅ M4 Gate adversarial verify 完成(2026-06-19b)**:獨立 verifier(general-purpose agent)+ 主迴圈自驗複核。**VERDICT＝數字精確重現、結論大致成立但一處 MAJOR 修正**:① look-ahead(M1 shift1 act T+1、M2 連2月確認+落後2月+ffill)OK 無洩漏;② 代理 wiring max|Δ|=0、MC seed bit-identical OK;③ M0 帶寬實作合 doc §6 pseudocode(賣 60% of 超過 TARGET)、優先序/floor 抽象化但 returns-based 不影響 NAV、00864B≥10% floor 有守 OK;④ TC 單邊各腿正確、周轉 drag ~0.09%/yr 不影響排序 OK;⑤ **MAJOR＝「無 alpha」用錯統計(IRvs0050 對低-beta book＝beta 非 alpha),正解 beta-adj α t=3.0/vol-matched Calmar 0.92 vs 0.57＝有真實風險調整優勢(分散+de-risk、非 skill)、α=0 仍成立但 window-dependent**(已於上「全書」條修正陳述);⑥ α=0 敏感度＝headline 幾乎不動(CAGR −0.5pp、IRvs0050 更負→坐實 IR 是 beta 效應)。**整體＝可信、防禦邏輯紮實,唯 alpha 陳述需用 R5 式風險對齊版本(已改)。**
 - **M0 上界帶寬細網格掃描(2026-06-19b;`notebooks/regime_tilt/band_upper_sweep.py`)**:應使用者要求對 0050(+7~12%)/00981A·00991A(+6~9%)上界(漲幾 pp 強制賣出)0.5pp 細掃(11×7×7=539,M0+M1 deterministic)。**結果＝完全 inert**:539 格 byte-identical(CAGR 16.26%/Sh 1.205/Calmar 0.827/maxDD −19.66% 全同,spread=0)。診斷證實股票腿最高僅漂到 **0050 37.0% / 00981A 20.7% / 00991A 17.9%(M0 單獨)**,**從不及最緊上界(42/22/22%)** → 月度再平衡(僅 1 月漂移)+33% 防禦腿稀釋+regime 重置使股票權重最多離目標 ~2pp。⇒ **此範圍無「最佳」可挑、零 overfit 風險(現行 default +7/+6/+7% 即可,寬窄等價)**;上界要成為有效「修剪贏家/控集中」槓桿須**反向收緊到 <~37/20/18%**(會犧牲 CAGR,另一個 sweep)。caveat:主動 β-proxy 完全相關壓抑腿間漂移、月度 cadence(真實 00981A 已近 22%)。
 - **↑REALISTIC 複跑(2026-06-19b;`band_upper_sweep_realistic.py`)＝修正上條兩缺陷後結論不變**:① 主動改用「更真實」模型＝β+net_alpha **+ idiosyncratic ε(σ 7%/5%)**(打破完全相關 artifact)、N=60 common-random-numbers;② 配置改 **M0+M1+M2**;③ 判定用 verifier 修正的 **beta-adj α vs 0050**(非被 beta 污染的 IRvs0050)。**539 格仍 byte-identical(spread=0):CAGR 16.29%/Sh 1.206/Calmar 0.841/maxDD −19.38%/β-adj α +5.46%/yr/β 0.63;best=default,gap≪2·SE→無真最佳、零 overfit。** band-bind 診斷(idio-on 自由漂移)證 idio 確有加漂移但仍不足:**0050 峰 p95 38.6%/max 39.2%(<42)、00981A p95 21.2%/max 21.7%(逼近但 0/60 路徑破 22%)、00991A p95 19.2%/max 20.1%(<22)**。⇒ **上界 inert 是真結論非 artifact;唯 00981A +6%(22%)是唯一「邊緣活著」的 cap(真實肥尾偶可能咬到)**。要當有效修剪槓桿仍須收緊:0050 <~38% / 00981A <~21% / 00991A <~20%。
-- **下一步＝使用者部署抉擇**:全書 + M0 + M1(a=0.75)落地?(M2 建議不做、USD/台幣靜態。)取捨已釐清＝棄 ~3.7pp/yr CAGR(輸牛市 beta)換 DD −34→−19.7%/Sh 1.01→1.21 + 真實但 window-dependent 的風險調整優勢。live 在使用者明確拍板前不動。
+- **下一步＝使用者部署抉擇**:全書 + M0 + M1(a=0.75)落地?(M2 建議不做、USD/台幣靜態。)取捨已釐清＝棄 ~3.7pp/yr CAGR(輸牛市 beta)換 DD −34→−19.7%/Sh 1.01→1.21 + 真實但 window-dependent 的風險調整優勢。live 在使用者明確拍板前不動。**〔✅ 2026-06-23 已拍板部署：使用者選擇 M0+M1+M2 三層全開（M2 改用 FRED 真資料上線，非如此處初步建議的「不做」）並上線 paper（mode: allocator、NT$150,000）。此行的「下一步/不動」敘述已被執行 supersede。〕**
 
 ### 3.7 🔒 鎖定規格全文（M0+M1+M2）＋ 測試方法論（2026-06-19b 使用者最終拍板定案）
 
-> **單一真相來源**：策略規格 + 驗證方法論定版於此。後續任何改動須在此更新並重跑下列 Gate。**本規格 2026-06-19b 經使用者最終拍板定案＝部署目標版本**（M0+M1+M2 全層 + 00981A 上界 +7% + 所有附帶參數）。部署路徑見 **`docs/M5_DEPLOYMENT_PLAN.md`**（規劃中）。**live 仍未動**（仍 0050+MA200 overlay）。
+> **單一真相來源**：策略規格 + 驗證方法論定版於此。後續任何改動須在此更新並重跑下列 Gate。**本規格 2026-06-19b 經使用者最終拍板定案＝部署目標版本**（M0+M1+M2 全層 + 00981A 上界 +7% + 所有附帶參數）。部署路徑見 **`docs/M5_DEPLOYMENT_PLAN.md`**。**〔✅ 2026-06-23：已依此凍結規格實作上線 paper（`strategy.mode: allocator`，M0+M1+M2 三層全開）——此處「規劃中／live 仍未動（0050+MA200 overlay）」已被部署 supersede；凍結參數本身未變。〕**
 
 **A. 策略規格（凍結）**
 - **資產書（6 檔目標權重）**：0050 35% / 00981A 16% / 00991A 16% / 00635U 10% / 00864B 11.5% / 永豐MMF 11.5%（曝險見 §2）。主動 ETF 代理＝`active_etf_proxy_model_00981A_00991A.md`：r=β·r0050+net_alpha/252+ε（00981A β1.10/α+2.2%/σ7%、00991A β1.05/α+1.0%/σ5%；資產級 DD 懲罰 −4/−2.5pp 為報告 caveat）。
 - **M0 靜態不對稱帶寬**（權威全文＝`tw_rebalancing_rules_2026_07.md`）：上界→賣出超過 **target** 的 60%（不賣到 target、留強勢續跑）、跌破下界→買回 target、帶內→持有不重置、MMF 吸收殘差；賣序 00991A→00981A→00635U→0050、買序反向、資金序 MMF超額→MMF常態→00864B超額→其他賣出；硬地板 MMF≥9.5%/00864B≥10%。**帶寬（2026-06-19b）**：0050 (31,42)、**00981A (13,23)**〔上界 +6→+7% 本次放寬〕、00991A (12.5,23)、00635U (8,15)、00864B (10,15)、MMF (9.5,14.5)（%）。
 - **M1 股票下行 de-risk**：MA200 骨幹 E1+E2（連 3 日跌破 MA200×0.99 + ±1% 帶確認）；ON → 股票 sleeve ×**0.75**（flat、非分層）、**暫停股票買跌**、釋出資金 2/3→MMF + 1/3→黃金（黃金上限 15%）；OFF 恢復 M0。act T+1（shift1）。
-- **M2 美元 tilt**：雙確認（US CPI YoY 近3月下行 **且** Fed funds 近3月下行＝弱美元）→ **±5pp 只動現金**（00864B↔MMF）；月級 + 連2月確認 + 發布落後 shift(2)、受硬地板 clip；黃金不隨 M2。**狀態：邊際（δ 內、僅 +0.6pp DD），列入規格但可關**（關＝USD/台幣靜態各 11.5%）。
+- **M2 美元 tilt**：雙確認（US CPI YoY 近3月下行 **且** Fed funds 近3月下行＝弱美元）→ **±5pp 只動現金**（00864B↔MMF）；月級 + 連2月確認 + 發布落後 shift(2)、受硬地板 clip；黃金不隨 M2。**狀態：邊際（δ 內、僅 +0.6pp DD），列入規格但可關**（關＝USD/台幣靜態各 11.5%）。**〔✅ 2026-06-23：使用者選擇「開」並上線——M2 已實作（`src/data/macro_fetcher.py` MacroMonitor，2026-06-23 實測抓 FRED `fredgraph.csv` 真資料後上線）。±5pp/硬地板等參數同上、未變。〕**
 - **再平衡節奏**：月初交易日 + regime/usd 變動觸發；周轉成本 0.002 單邊/各腿（非 MMF）。
 
 **B. 測試方法論（凍結）**
@@ -178,14 +184,16 @@
 | **M2 美元/利率 monitor** | USD↔TWD 慢速 regime tilt（CPI/Fed 驅動）。 | 低-中（USD timing 難） | 過 Gate→併入;否則 USD/TWD 維持靜態各半 |
 | **M3 額外股票訊號** | vol/breadth/US-semi 等（E4–E8 重做於多資產） | **低**（先驗多 FAIL） | 純研究;預期多退回 M1 骨幹 |
 | **M4 驗證 Gate**✅ | 全書 ablation + idio MC + adversarial verify（beta-adj α/vol-matched）。**已過**：M0+M1+M2 有真實風險調整優勢（防禦非 alpha） | — | ✅ 完成（§3.7/§5） |
-| **M5 部署**◀現在 | benchmark→6 資產 allocator 落地（config+引擎+rebalancer+macro），分階段：建置→影子→paper 實跑 | — | **計畫＝`docs/M5_DEPLOYMENT_PLAN.md`**;live 待使用者逐 Phase 拍板 |
+| **M5 部署** ✅ | benchmark→6 資產 allocator 落地（config+引擎+rebalancer+macro），分階段：建置→影子→paper 實跑 | — | **✅ 已於 2026-06-23 實作上線 paper**（`strategy.mode: allocator`、M0+M1+M2 全開、NT$150,000）；計畫＝`docs/M5_DEPLOYMENT_PLAN.md` |
 
-- **M0–M4（研究/驗證）已完成**：規格 M0+M1+M2 於 §3.7 使用者拍板定案；**M5（部署）為現行步驟，playbook＝`docs/M5_DEPLOYMENT_PLAN.md`，純規劃、live 仍未動**（鐵則#2）。每階段一項變更、配 plan→execute→(verify)→analyze。
+- **M0–M4（研究/驗證）已完成**：規格 M0+M1+M2 於 §3.7 使用者拍板定案；**M5（部署）✅ 已於 2026-06-23 實作上線 paper**（`strategy.mode: allocator`，M0+M1+M2 三層全開；playbook＝`docs/M5_DEPLOYMENT_PLAN.md`）——此處原述「純規劃、live 仍未動」已被部署 supersede（鐵則#2 的「使用者拍板部署」分支）。每階段一項變更、配 plan→execute→(verify)→analyze。
 - 可複用 harness：`notebooks/e1e2_walkforward.py`（黃金模板）、`benchmark_backtest.py`、`r0–r6_*`、`capped_sim.py`。
 
 ---
 
 ## 7. 待使用者拍板的決策（進 M0 前）
+
+> **〔✅ 2026-06-23：以下決策皆已拍板並隨 allocator 上線——再平衡＝M0 不對稱帶寬（月初 + regime/usd 觸發）、tilt 上限＝凍結參數（§3.7）、下行先砍主動高 β、M2 選「做」（FRED 真資料）、載具＝獨立 allocator 引擎（`src/strategy_engines/allocator_engine.py`）。以下為原始待決清單。〕**
 
 1. **再平衡規則**：帶寬（股票 ±5pp？衛星/黃金 ±2–3pp？）vs 定期（季？）vs 混合；以及小額（~十幾萬）下用**盤中零股 + MMF 申購**執行的最低變動門檻（避免過度交易侵蝕）。
 2. **分配器 tilt 上限**：§3.4 暫定上限是否合意（保守 vs 積極）。使用者高風險偏好 → 可放寬,但需 OOS 證明值得。
@@ -202,8 +210,8 @@
 - **黃金期貨拖累**：00635U contango+費 ~1.43%/年;弱美元時順風、強美元時雙逆風。
 - **alpha 預期 FAIL**：這是防禦/再平衡工程,非追 alpha;成功定義＝降 DD 或改善風險調整後報酬 vs Baseline-S。
 - **survivorship → 全為上界**。
-- **純計畫**：本檔未改任何 code/config/live、未 commit。
+- **純計畫**：本檔未改任何 code/config/live、未 commit。**〔✅ 2026-06-23 已超越「純計畫」：allocator 已實作並上線 paper（`strategy.mode: allocator`，M0+M1+M2）；本檔自此為原始設計/規格紀錄，實作真相見 CLAUDE.md / `docs/M5_DEPLOYMENT_PLAN.md`。〕**
 
 ---
 
-*建立 2026-06-19｜性質：計畫（PLAN）｜上游＝5 資產戰略配置定案（記憶 `portfolio-expansion-5-asset`）｜紀律＝CLAUDE.md 鐵則 + R5/E1–E8 先驗｜下一步＝使用者拍板 §7 後進 M0。*
+*建立 2026-06-19｜性質：計畫（PLAN）→ **✅ 2026-06-23 已實作上線 paper（mode: allocator，M0+M1+M2 三層全開）**，本檔自此為原始設計/規格紀錄｜上游＝5 資產戰略配置定案（記憶 `portfolio-expansion-5-asset`）｜紀律＝CLAUDE.md 鐵則 + R5/E1–E8 先驗（**定位不變：分散+regime 風控、非經證實 alpha、R5 未翻案**）｜實作真相＝CLAUDE.md / `docs/M5_DEPLOYMENT_PLAN.md`。*

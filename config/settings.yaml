@@ -7,7 +7,7 @@
 # mode=benchmark：只交易 0050，依「波動目標」算曝險、每月或偏離 >5pp 才再平衡（見 src/strategy_engines）。
 #   benchmark 不套用 active 的籌碼候選與 ATR 移動停損（它有自己的再平衡邏輯）。
 strategy:
-  mode: benchmark           # active | benchmark  ← R6 被動落地（2026-06-17）：PIT 重建裁決＝誠實池無前瞻 alpha → 改被動為主
+  mode: allocator           # active | benchmark | allocator  ← 2026-06-23：切 6 資產 Asset Allocator（M0 帶寬 + M1 MA200 de-risk；M2 暫關）。benchmark=前一階段被動 0050+MA200
   # --- 對照組（benchmark）參數，僅 mode=benchmark 時生效 ---
   benchmark:
     symbol: "0050"          # 對照組標的（只用 0050）
@@ -28,7 +28,7 @@ strategy:
   # 規格真相＝MULTI_ASSET_UPGRADE_PLAN.md §3.7 + tw_rebalancing_rules_2026_07.md + full_book_backtest.target_weights()
   # 數字逐項對齊 §3.7 凍結參數（TARGET/BANDS/A_DERISK=0.75/SELL_FRAC=0.60）；任一改動兩邊同步（單一真相）。
   allocator:
-    enabled_layers: ["M0", "M1"]      # M2 預設不開（macro feed 驗證後再開）；全開＝["M0","M1","M2"]
+    enabled_layers: ["M0", "M1", "M2"]  # 2026-06-23：M2 上線（FRED CPI+Fed feed 已實測抓到真實資料）；M0+M1+M2 全運作
     assets:                            # 目標權重 + 不對稱帶寬（對齊 §3.7 / tw_rebalancing_rules §1）
       "0050":   {target: 0.35,  band_lower: 0.31,  band_upper: 0.42}
       "00981A": {target: 0.16,  band_lower: 0.13,  band_upper: 0.23}   # 上界 +7%（2026-06-19b 放寬，留肥尾安全邊際）
@@ -51,7 +51,7 @@ strategy:
       suspend_equity_dip_buy: true     # ON 時暫停股票買跌
       freed_to: {MMF: 0.667, "00635U": 0.333}    # 釋出資金去向（2/3→MMF + 1/3→黃金；黃金上限 band_upper 15%）
     M2:                                # 美元 tilt（雙確認 CPI+Fed；只動現金 00864B↔MMF）
-      enabled: false                   # 先關；macro feed 驗證後再開（§5 分階段）
+      enabled: true                    # 2026-06-23：FRED feed 實測 OK（CPIAUCSL+FEDFUNDS）→ 上線；雙閘＝此旗標 + enabled_layers 含 M2
       cpi_series: "CPIAUCSL"
       fed_series: "FEDFUNDS"
       lookback_months: 3               # YoY 近 3 月變化窗
@@ -92,7 +92,7 @@ risk:
 # --- 券商設定 ---
 broker:
   mode: "paper"              # paper（本地模擬撮合）/ shioaji（永豐實盤，需開戶+API key）
-  paper_initial_cash: 100000  # 模擬盤初始資金（2026-06-10 由 7 萬升 10 萬；重啟前須刪 data/processed/paper_account.json 才生效）
+  paper_initial_cash: 150000  # 模擬盤初始資金（2026-06-22 由 10 萬升 15 萬＝同策略規劃本金；重啟前須刪/改 data/processed/paper_account.json 才生效）
 
 # --- 通知設定 ---
 notify:

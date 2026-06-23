@@ -1,6 +1,9 @@
 # M5 — 部署計畫：benchmark（單資產 0050）→ 6 資產 Asset Allocator（M0+M1+M2）
 
-> **狀態：Phase A 建置完成、gate 通過（2026-06-19c，agent workflow `wo9hofr8d`／11 agents）。建置全程 additive、mode-gated → live 執行路徑仍 benchmark（0050+MA200）逐位不變**（`pytest` 323 綠、既有 105 行為中性、cross-val max|Δ|=0、`strategy.mode` 仍 benchmark、帳本未碰；對抗 review 抓到 2 個 must-fix 皆已修補測，見 §12）；切到 `mode: allocator` + 帳戶遷移是 paper 跑 ≥十幾天後的**另一步、由使用者觸發**。本檔是「怎麼把 §3.7 拍板定案的 M0+M1+M2 從 returns-based 研究沙盒落到 live paper 引擎」的逐步 playbook + **§11 凍結建置 spec（單一介面真相）**。
+> **🟢 狀態（2026-06-23 更新）：Phase C 已執行完成、allocator + M0 + M1 + M2 三層全開、已上線 paper 評估。** 2026-06-23 由使用者拍板部署：歸零重建帳本至 NT$150,000 →`deploy/build_initial_book.py --execute` 建全 6 腿（含 00864B 冷啟腿）→ 切 `config strategy.mode: allocator` → 24/7 launchd 重啟 → 雙帳本驗證一致（5 ETF + MMF、總權益 ~149,746）。**M2 同日上線**（先實測 FRED 抓到真資料、再開雙閘 `enabled_layers` 含 M2 + `M2.enabled: true`；當日兩 regime 訊號皆中性 → 書維持目標、無 tilt）。同日修 3 個 live bug（滑價 sizing / conftest 清帳本 / 滿倉 cash=0 capital base，`pytest` 328 passed）。詳見 **§14**。
+> **定位（紀律不變）：allocator＝使用者選定的多資產分散 + regime 風控，非經證實 alpha；R5「無穩健 alpha、0050 報酬王」仍成立；此為鐵則#2「使用者拍板部署」分支的 paper 評估（≥十幾天）。**
+>
+> _（歷史狀態：Phase A 建置完成、gate 通過於 2026-06-19c，agent workflow `wo9hofr8d`／11 agents；建置全程 additive、mode-gated；`pytest` 323 綠、既有 105 行為中性、cross-val max|Δ|=0、對抗 review 2 must-fix 已修補測，見 §12。）_ 本檔是「怎麼把 §3.7 拍板定案的 M0+M1+M2 從 returns-based 研究沙盒落到 live paper 引擎」的逐步 playbook + **§11 凍結建置 spec（單一介面真相）**。
 >
 > 規格真相＝`MULTI_ASSET_UPGRADE_PLAN.md` §3.7（2026-06-19b 使用者最終拍板定案）＋ `tw_rebalancing_rules_2026_07.md`（M0 全文）。建立 2026-06-19b。
 
@@ -131,19 +134,21 @@ strategy:
 |---|---|---|---|
 | **A. 建置 + 行為中性**（✅ 完成 2026-06-19c） | 寫 §11 全模組 + config + 測試（§8）；**M2 一併建好**（`enabled: false` 預設） | ① `mode=benchmark` 既有 **105 測試逐位綠**；② 新多資產測試綠；③ **交叉驗證**：allocator 引擎在歷史快取上重現 `full_book_backtest` 的權重軌跡（容差內）＝ live 引擎 ≡ 研究沙盒；④ 對抗 review 無 look-ahead/mode-gating 洩漏/現金 cascade/地板違反 → **全達成**（pytest 323 綠、cross-val max\|Δ\|=0、2 must-fix 已修補測，見 §12） | 否（仍 benchmark） |
 | ~~B. 影子跑~~ | **已移除**（§10b 使用者選直接 paper） | — | — |
-| **C. paper 實跑** | **歸零重建帳戶（§6 選項 i）** → `mode: allocator` → 真在 paper account 下單（**Fugle 零股 ~5 秒撮合價**）。先 M0+M1，macro feed 驗證後再開 M2 | 跑 **≥十幾天**（§10d）；paper 曲線與預期一致、無執行 bug、DD/周轉/地板/優先序如實、regime/macro state 正確 | **是（paper）** |
+| **C. paper 實跑**（✅ 已執行 2026-06-23，見 §14） | **歸零重建帳戶（§6 選項 i）** → `mode: allocator` → 真在 paper account 下單（**Fugle 零股 ~5 秒撮合價**）。~~先 M0+M1，macro feed 驗證後再開 M2~~ → **實際：M0+M1+M2 三層當日全開**（FRED 先實測抓到真資料再開雙閘） | 跑 **≥十幾天**（§10d）；paper 曲線與預期一致、無執行 bug、DD/周轉/地板/優先序如實、regime/macro state 正確 ← **進行中（paper 評估 ≥十幾天）** | **是（paper，2026-06-23 起）** |
 | **D. 真錢/Shioaji** | 帳戶+API key 已申請；**本計畫僅文件化、先不實做**（§10d、paper ≥十幾天後另議） | 另開決策 | — |
 
-**M2 上線時點**：本次 Phase A **把 M2 一併建好**（§10a），但 config 預設 `M2.enabled: false`；Phase C 先跑 **M0+M1**，待 `MacroMonitor` live feed（FRED）穩定驗證後於 paper 階段單獨開啟。理由：M2 邊際（δ 內、僅 +0.6pp DD），且 live macro 是**最大新外部依賴**，風險/報酬不對稱。
+**M2 上線時點**：本次 Phase A **把 M2 一併建好**（§10a），config 原預設 `M2.enabled: false`。~~Phase C 先跑 M0+M1，待 `MacroMonitor` live feed（FRED）穩定驗證後於 paper 階段單獨開啟。~~ **✅ 已於 2026-06-23 執行：先實測 FRED 線上抓到真資料、再開雙閘（`enabled_layers` 含 M2 + `M2.enabled: true`）→ M2 與 M0/M1 同日上線（見 §14）。** 當日兩 regime 訊號皆中性（regime_off、usd=0）→ 書維持目標、無 tilt。
 
 ---
 
-## 6. paper account 遷移（Phase C 前執行）
+## 6. paper account 遷移（Phase C 前執行）— ✅ 已於 2026-06-23 執行（見 §14）
 
 - 現況 `paper_account.json` 可能持有 benchmark 的 0050 部位（CLAUDE.md 提到的孤兒倉）。
 - 步驟：停 `main.py` → **備份** `paper_account.json` + `positions.json` → 重建 → 重啟。
 - **使用者已選 (i) 歸零重建（§10c，最乾淨）**：賣出 0050 → 全現金 → 依 6 標的目標權重一次建倉。〔(ii) 保留 0050 補建＝已否決。〕
 - `conftest.py` 測試自清狀態檔，不受影響。
+  - ⚠️ **2026-06-23 部署期發現並修正**：`tests/conftest.py` 跑 `pytest` 會清掉 **live** 帳本 → 已加 session 級備份/還原 fixture（§14 bug ②）。
+- **✅ 實際執行（2026-06-23）**：歸零重建至 **NT$150,000** →`deploy/build_initial_book.py --execute` 建全 6 腿（含 00864B 冷啟腿）→ 雙帳本驗證一致（5 ETF + MMF、總權益 ~149,746）。詳見 §14。
 
 ---
 
@@ -304,30 +309,81 @@ strategy:
 
 ---
 
-## 13. Phase C 遷移 runbook（執行清單；2026-06-19c planning — 尚未執行）
+## 13. Phase C 遷移 runbook（執行清單）— ✅ 已於 2026-06-23 全數執行（原 2026-06-19c planning；落地紀錄見 §14）
 
-**前置 Gate（全綠才遷移）：**
-1. 週一 10:00 odd-lot 深度複驗 **PASS**（5 檔小單可成交，尤其 00864B/00635U）。
-2. `pytest` 326 綠、cross-val OK、`allocator` 區塊對齊 §3.7。
-3. M2 決策：首波 `allocator.M2.enabled: false`（先 M0+M1，§10a）。
-4. benchmark MA200 修正已 live（✅ 已完成）。
+> **本節原為「尚未執行」的計畫清單；下列前置 Gate 與步驟已於 2026-06-23 由使用者拍板執行完成。** 逐項落地細節與差異（如 M2 同日上線而非延後、本金 150k 而非草案 100k）見 **§14**。
+
+**前置 Gate（全綠才遷移）— ✅ 已驗：**
+1. ✅ 盤中零股深度**複驗 PASS**（6 標的含 00864B 可成交；§14）。
+2. ✅ `pytest` 綠（部署當日 328 passed）、cross-val OK、`allocator` 區塊對齊 §3.7。
+3. ~~M2 決策：首波 `allocator.M2.enabled: false`（先 M0+M1，§10a）。~~ → **✅ 改為同日開 M2**（先實測 FRED 抓到真資料再開雙閘，§14）。
+4. ✅ benchmark MA200 修正已 live（已完成）。
 
 **🟥 關鍵發現（遷移必讀）— 冷啟動建倉缺口（migration planning 審 rebalancer 抓到）：**
 `PortfolioRebalancer` 的 `BUY_ORDER=[0050,00981A,00991A,00635U]`、`SELL_ORDER=[00991A,00981A,00635U,0050]` **皆不含 00864B**（設計：00864B/MMF＝地板 ballast、只 drift 管理、rebalancer 不主動買賣）。
 → **從全現金「讓 allocator 自己建倉」會漏掉 00864B(11.5%)**：實測語意＝買 0050 35/981 16/991 16/635U 10（=77%）後，**00864B 不被買（停 0）、殘餘現金全灌進 MMF（→ ~23% 肥倉）**＝錯誤配置（缺債腿、MMF 雙倍）。
 → **歸零重建必須有一次性「初始建倉」步驟**把 6 腿（含 00864B）一次建到 target，再交給 allocator 做後續 drift 管理。
 
-**遷移步驟（建議非交易時段：週一 15:00 收盤後 或 週二 08:30 前；避免切換中下單）：**
-1. **停 bot**（graceful）：`bash deploy/macos/stop_bot.sh`（SIGTERM → graceful_shutdown）；確認進程停。
+**遷移步驟（建議非交易時段：週一 15:00 收盤後 或 週二 08:30 前；避免切換中下單）— ✅ 全數已於 2026-06-23 執行（§14）：**
+1. **停 bot**（graceful）：`bash deploy/macos/stop_bot.sh`（SIGTERM → graceful_shutdown）；確認進程停。〔✅ 實際以 `launchctl bootout` 停機，KeepAlive 下 kill 會被秒拉起，§14。〕
 2. **備份**：`cp data/processed/{paper_account,positions}.json <backup-時間戳>/`。
 3. **初始建倉（一次性、補冷啟缺口）** — 用 `deploy/build_initial_book.py`（**已交付**；dry-run 已驗證從全現金 100k 建出 6 腿到 target 含 00864B[35/16/16/10/11.5/11.5]）：讀現金/持倉 → 賣 0050 超額 → 按 target 對 5 檔 ETF 下 Fugle 零股單（book-walk 價、先賣後買、現金縮量、硬地板）+ 殘餘現金 `SyntheticMMF.deposit`。**含 00864B**。預設 dry-run；`--execute` 才下單，且**會先搶單例鎖→ bot 在跑時拒絕執行**（防帳本雙寫）。建議市場時段跑（真實零股簿）。
 4. **清 allocator runtime state**：刪 `data/processed/allocator_state.json`（留空→首跑視為已變、不誤觸發）；`mmf_sleeve.json` 由步驟 3 建。
 5. **切 config**：`strategy.mode: benchmark → allocator`；確認 `allocator.M2.enabled: false`。
 6. **重啟**：`launchctl kickstart -k gui/$(id -u)/com.tradingbot.start`（或等次日 08:30）→ `make_engine` 回 AllocatorEngine。
-7. **首次 allocator rebalance**：6 腿已在 target（drift≈target）→ 帶寬閘 hold、低 churn；regime_on（FinMind MA200）/ usd（M2 off=0）正常。確認無大額重建 churn。
-8. **驗收**：持倉 ≈ target（零股粒度）、MMF≈11.5%、00864B≥10% 地板、log 無錯、通知正常。
-9. **監看 ≥十幾天**（§10d）：regime 觸發頻率、月初 rebalance、DD、零股可成交性、MMF accrual。
+7. **首次 allocator rebalance**：6 腿已在 target（drift≈target）→ 帶寬閘 hold、低 churn；regime_on（FinMind MA200）/ usd（M2 off=0）正常。確認無大額重建 churn。〔✅ 驗證雙帳本一致、總權益 ~149,746，§14。〕
+8. **驗收**：持倉 ≈ target（零股粒度）、MMF≈11.5%、00864B≥10% 地板、log 無錯、通知正常。〔✅ 已驗，§14。〕
+9. **監看 ≥十幾天**（§10d）：regime 觸發頻率、月初 rebalance、DD、零股可成交性、MMF accrual。← **進行中（paper 評估，2026-06-23 起）。**
 10. **Rollback**：`mode→benchmark` + 還原備份 json + 重啟（或接受持有 6 ETF 手動處理）。
-11. **M2 後上**：M0+M1 paper 穩定 + FRED 線上再驗 → `M2.enabled: true` + 影子比對一次再正式。
+11. ~~**M2 後上**：M0+M1 paper 穩定 + FRED 線上再驗 → `M2.enabled: true` + 影子比對一次再正式。~~ → **✅ 已於 2026-06-23 同日上 M2**（先實測 FRED 抓到真資料、再開雙閘 `enabled_layers` 含 M2 + `M2.enabled: true`；當日 usd=0 中性，§14）。
 
-**剩餘 Phase C 交付（遷移前要做）：** ① ✅ `deploy/build_initial_book.py`（已交付、dry-run 驗證、`--execute`+單例鎖防雙寫）；② 週一 odd-lot 複驗 PASS 確認；③〔可選但建議〕為 `PortfolioRebalancer` 補「00864B 偏離回補」路徑，根治冷啟缺口、避免日後再踩。
+**剩餘 Phase C 交付（遷移前要做）— ✅ 已了結：** ① ✅ `deploy/build_initial_book.py`（已交付、dry-run 驗證、`--execute`+單例鎖防雙寫；2026-06-23 已 `--execute` 建 6 腿）；② ✅ odd-lot 複驗 PASS 確認（6 標的含 00864B 可成交）；③〔可選但建議〕為 `PortfolioRebalancer` 補「00864B 偏離回補」路徑根治冷啟缺口——**此 follow-up 仍開放（非部署阻斷；冷啟已由 `build_initial_book.py` 一次性補齊）。**
+
+---
+
+## 14. 2026-06-23 — Phase C 已執行 + M2 上線 + 3 個 live bug 修復（✅ 完成）
+
+> **狀態＝Phase C 遷移已執行完成、live 已從 R6 benchmark（0050+MA200 被動）切換為 M5 6 資產 Asset Allocator、三層（M0+M1+M2）全開、進入 paper 評估（≥十幾天）。由使用者拍板部署。** 本節將 §13 runbook 的「待執行」計畫記為「已完成」狀態，並記錄與計畫的差異。**紀律不變：allocator＝使用者選定的多資產分散 + regime 風控，非經證實 alpha；R5「無穩健 alpha、0050 報酬王」未翻案；此為鐵則#2「使用者拍板部署」分支。**
+
+### 14.1 遷移實際步驟（已做 — 對應 §13 runbook）
+1. **盤中零股深度複驗 PASS** — 6 標的（含薄帳的 00864B）實測可成交。〔解 §12.1 DEFERRED 的零股深度 gate、§13 前置 Gate 1。〕
+2. **停 bot（bootout）** — 以 `launchctl bootout` 停機（**非** `stop_bot.sh`）；理由：24/7 launchd `KeepAlive` 下單純 kill 進程會被秒拉起，必須 bootout 才真停。
+3. **歸零重建帳本至 NT$150,000** — 清舊 benchmark 孤兒倉、帳本歸零重建。〔本金 **150k**，§13/§6 草案曾寫 100k；以 150k 為準（對齊 MEMORY user-risk-profile 與部署實況）。〕
+4. **`deploy/build_initial_book.py --execute` 建全 6 腿** — 一次性初始建倉，**含 00864B 冷啟腿**（補 §13「🟥 冷啟動建倉缺口」：rebalancer BUY/SELL 序不含 00864B，須一次性建倉補齊）。
+5. **切 config** — `config/settings.yaml strategy.mode: benchmark → allocator`。
+6. **24/7 launchd 重啟** — `make_engine()` 回 `AllocatorEngine`。
+7. **驗證雙帳本一致** — 5 ETF + MMF 兩帳本一致、**總權益 ~149,746**、無大額重建 churn。〔對應 §13 步驟 7/8 驗收。〕
+- **書（目標權重）：** 0050 35% / 00981A 16% / 00991A 16% / 00635U(黃金) 10% / 00864B(美債) 11.5% / MMF(合成現金 sleeve) 11.5%。本金 NT$150,000、`mode=paper`（Fugle 盤中零股、模擬撮合）。
+
+### 14.2 三層全開 + M2 上線（已做 — 對應 §5「M2 上線時點」、§13 步驟 11）
+- **三層全開：** M0（不對稱帶寬）+ M1（MA200 de-risk，FinMind 史料）+ M2（CPI+Fed USD tilt，FRED `fredgraph.csv` 免 key）。
+- **M2 已於 2026-06-23 上線**（§13 步驟 11 的「M2 後上」未來式 → ✅ 完成）：流程＝**先實測 FRED 線上抓到真資料、再開雙閘**（`allocator.enabled_layers` 含 `"M2"` + `allocator.M2.enabled: true`）。〔較 §5/§10a「先 M0+M1、macro feed 驗證後再開」的計畫提前為**同日上線**，但仍守「先驗 live feed 再開」的安全前提。〕
+- **當日 regime 訊號：** 兩 regime 訊號皆**中性**（`regime_off`、`usd=0`）→ 書維持目標、**無 tilt**（M1 不 de-risk、M2 不互換現金腿）。
+
+### 14.3 部署架構：24/7 launchd（取代每日排程）
+- **改用 24/7 launchd**（`KeepAlive` + `RunAtLoad` + `caffeinate`，**需開蓋**）取代原每日 08:30/15:00 排程。
+  - **動因：** Mac 睡眠導致 08:30 排程從未觸發 → bot 自 ~6/16 起盤中缺席、零交易。24/7 常駐解決。
+- **dashboard 也 launchd 化**（`com.tradingbot.dashboard`，綁 `0.0.0.0:8787`）。
+- **停機紀律：** 須 `launchctl bootout`（`KeepAlive` 下 `kill` 會被秒拉起）。
+
+### 14.4 3 個 live bug 修復（已做，`pytest` 328 passed）
+1. **decide_rebalance 滑價 sizing** → 首筆建倉 `insufficient_cash`。修：加 slippage 參數 + 回歸測試。
+2. **`tests/conftest.py` 跑 pytest 會清掉 live 帳本** → 加 **session 級備份/還原 fixture**（保護 live `paper_account.json`/`positions.json`）。〔補強 §6「conftest 自清狀態檔不受影響」的隱患。〕
+3. **滿倉 cash=0 時 `TOTAL_CAPITAL = get_balance() or 50_000` 錯設 50k** → 改用 `_capital_base`。
+- 驗證：**`pytest` 328 passed**。
+
+### 14.5 與 §13 計畫的差異對照（落地實況）
+| §13 計畫（未來式） | 2026-06-23 實際 | 差異說明 |
+|---|---|---|
+| 停 bot 用 `stop_bot.sh` | `launchctl bootout` | 24/7 launchd KeepAlive 下須 bootout 才真停 |
+| 本金（§6/§13 草案曾寫 100k dry-run） | **NT$150,000** | 以 150k 為部署真相 |
+| 首波 M2 關、M0+M1 先跑（§5/§10a/§13 步驟 11） | **M2 同日上線**（先驗 FRED 再開雙閘） | 提前，但守「先驗 live feed」前提 |
+| 每日 08:30/15:00 排程 | **24/7 launchd 常駐**（KeepAlive+caffeinate） | 解 Mac 睡眠致 08:30 未觸發、~6/16 起零交易 |
+| — | 同日修 3 live bug（§14.4） | 部署期實測抓出、已修 + 測 |
+
+### 14.6 後續（paper 評估期）
+- **監看 ≥十幾天**（§10d / §13 步驟 9）：regime 觸發頻率、月初 rebalance、DD、零股可成交性、MMF accrual、雙帳本一致性、M2 usd 訊號變動。
+- **開放 follow-up**（非部署阻斷）：為 `PortfolioRebalancer` 補「00864B 偏離回補」路徑（§13 交付③），根治冷啟缺口、避免日後 drift 偏離後無自動回補。
+- **Rollback**（§7 / §13 步驟 10）：`mode → benchmark` + 還原備份 json + 重啟（或接受持有 6 ETF 手動處理）。
+- **真錢/Shioaji（Phase D）：** 仍僅文件化、未實做（§5 D、§10d）；paper 評估 ≥十幾天後另議。
+- survivorship + 主動 ETF <1yr 未經空頭 → 一切預期仍帶上界 caveat（鐵則#5）。

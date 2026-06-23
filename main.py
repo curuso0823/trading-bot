@@ -149,6 +149,16 @@ def _benchmark_0050_closes(lookback_days: int = 400) -> "pd.Series | None":
     return _finmind_closes(sym, lookback_days)
 
 
+def _capital_base() -> float:
+    """風控/盤後報表的資金基準。有現金 → 用現金；全額投入（cash≈0，如 allocator 滿倉）→ fall back
+    到設定初始資金 paper_initial_cash，避免舊 `or 50_000` 把 ~150k 組合的熔斷門檻/報表分母錯設成 50k。"""
+    bal = float(broker.get_balance() or 0.0)
+    if bal > 1.0:
+        return bal
+    init = float(load_settings().get("broker", {}).get("paper_initial_cash", 0) or 0)
+    return init if init > 1.0 else 50_000.0
+
+
 def benchmark_pre_market_task():
     """benchmark 盤前：算今日 0050 目標曝險（僅記錄/通知，實際調倉在 rebalance）。"""
     global _risk_guard, TOTAL_CAPITAL
@@ -157,7 +167,7 @@ def benchmark_pre_market_task():
         return
     logger.info("=== [benchmark] 盤前：計算 0050 目標曝險 ===")
     try:
-        TOTAL_CAPITAL = broker.get_balance() or 50_000
+        TOTAL_CAPITAL = _capital_base()
         _risk_guard = RiskGuard(total_capital=TOTAL_CAPITAL)   # 沿用熔斷/單日虧損上限（不套 ATR 停損）
         closes = _benchmark_0050_closes()
         if closes is None or len(closes) < strategy_engine.lookback + 2:
@@ -220,7 +230,7 @@ def benchmark_rebalance_task():
 
         slip = exec_slippage()
         act = strategy_engine.decide_rebalance(equity, cash, cur_qty, price, target_exp,
-                                               force_monthly=force_monthly)
+                                               force_monthly=force_monthly, slippage=slip)
         if act.is_noop:
             logger.info(f"[benchmark] 不調倉：{act.reason}")
             return
@@ -349,7 +359,7 @@ def allocator_pre_market_task():
         return
     logger.info("=== [allocator] 盤前：計算 6 資產目標權重 ===")
     try:
-        TOTAL_CAPITAL = broker.get_balance() or 50_000
+        TOTAL_CAPITAL = _capital_base()
         _risk_guard = RiskGuard(total_capital=TOTAL_CAPITAL)   # 沿用熔斷/單日虧損上限
         eng = strategy_engine
         closes = _alloc_fetch_closes(
@@ -646,7 +656,7 @@ def main():
     # #4：啟動即初始化資金與風控（避免在 08:50 之後重啟、漏跑 pre_market 時 _risk_guard=None
     #     → 盤中監控對既有持倉無法做停損）。pre_market 之後會再刷新。
     global TOTAL_CAPITAL, _risk_guard
-    TOTAL_CAPITAL = broker.get_balance() or 50_000
+    TOTAL_CAPITAL = _capital_base()
     _risk_guard = RiskGuard(total_capital=TOTAL_CAPITAL)
     logger.info(f"啟動初始化：資金 {TOTAL_CAPITAL:,.0f}，風控就緒")
 
@@ -679,6 +689,27 @@ def main():
         logger.info(f"✅ 交易系統啟動（benchmark 被動：{strategy_engine}），等待排程...")
         notifier.system(f"交易系統已啟動（benchmark：{strategy_engine.symbol} 波動目標 "
                         f"target_vol={strategy_engine.target_daily_vol}、MA{strategy_engine.regime_ma} overlay）")
+
+    # 啟動補跑：交易日盤中（market_open ≤ now < post_market）重啟時，APScheduler 不回補已過的 cron，
+    # 故同步補跑一次 pre_market + rebalance，避免漏掉當日建倉/再平衡。
+    # 正常 08:30 開機在盤前（now < market_open）→ 不觸發，當日 cron 照常；僅影響盤中重啟。
+    try:
+        _now = datetime.now(TZ)
+        _oh, _om = (int(x) for x in sched_cfg["market_open"].split(":"))
+        _ph, _pm = (int(x) for x in sched_cfg["post_market"].split(":"))
+        _open_t = _now.replace(hour=_oh, minute=_om, second=0, microsecond=0)
+        _post_t = _now.replace(hour=_ph, minute=_pm, second=0, microsecond=0)
+        if is_trading_day() and _open_t <= _now < _post_t:
+            logger.info("啟動補跑：交易日盤中重啟 → 立即補跑 pre_market + rebalance")
+            if _allocator_mode():
+                allocator_pre_market_task()
+                allocator_rebalance_task()
+            else:
+                benchmark_pre_market_task()
+                benchmark_rebalance_task()
+    except Exception as e:
+        logger.exception("啟動補跑失敗")
+        notifier.error(e, "startup_catchup")
 
     try:
         scheduler.start()

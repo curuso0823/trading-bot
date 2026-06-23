@@ -1,5 +1,7 @@
 # PIT 乾淨重建計劃 — 從零建立（可驗證的）獲利策略
 
+> ⚠️ 後續（2026-06-23）：R6 的 benchmark 被動落地（0050+MA200）已被使用者拍板的 M5 6 資產 allocator 部署取代為現行 live（非翻案 R0–R5 裁決——allocator 是使用者選定的分散+風控組合、非經證實 alpha）。詳見 CLAUDE.md / docs/M5_DEPLOYMENT_PLAN.md / RESEARCH_JOURNEY.md §(h)。
+
 > **建立 2026-06-16**。承 [`IMPROVEMENT_PLAN_v2.md` 附錄 B](IMPROVEMENT_PLAN_v2.md)（後見之明污染稽核）。
 > 觸發：背景監看 `logs/chip_cache_watch.out` 報「廣池籌碼（法人∩融資券）≥ ~1400」即啟動（明天）。
 
@@ -205,7 +207,7 @@ R0/R1/R-attrib 已定讞：**誠實池無穩健 alpha，唯一真貢獻＝regime
 - 全套 `pytest` 綠 → paper-trade 驗流程 → 小額 live。
 - **在此步之前 live 全不動。**
 
-### ✅ R6 結果（2026-06-17；被動落地 0050+MA200-85% overlay + 倉庫清理；已執行、待使用者部署）
+### ✅ R6 結果（2026-06-17；被動落地 0050+MA200-85% overlay + 倉庫清理；已執行、待使用者部署）（→ 2026-06-23 已切 allocator）
 
 R5 裁決後使用者選 **R6 被動落地**、口味＝**vol-target + MA200 overlay**（白話：平時跟 0050、跌破 MA200 退、漲回再跟）。
 - **零 code 改動**：live 早有 active/benchmark 模式開關（commit 45006c4，`config/settings.yaml → strategy.mode`）→ 純 config flip。`BenchmarkEngine`：只交易 0050、vol-target 配重、MA overlay、月度/偏離再平衡、fail-safe（未知 mode 回退 active）。
@@ -229,6 +231,6 @@ R5 裁決後使用者選 **R6 被動落地**、口味＝**vol-target + MA200 ove
 
 - **觸發**：✅ 已達成 —— builder 完成、法人∩融資券 **1813 ≥ 1400**、四方完整 **1706**、除權息足以 `adjust=True` 純快取。R0 已執行。
 - **branch**：`pit-rebuild`（R0 產物在此，未 commit）；`main`（live config/src）不動到通過總 Gate。
-- **執行順序**：~~前置~~ ✅ → ~~R0~~ ✅ → ~~R1~~ ✅（K=cherry-pick、加格僅方向性、FAIL）→ ~~R-attrib~~ ✅（無層加 alpha、唯 regime 降 DD、籌碼疑慮坐實）→ ~~R5~~ ✅（…被動為主誠實出口、總 Gate FAIL）→ ~~R6~~ ✅（被動落地 0050+**MA200-85%** overlay + **倉庫清理**：舊 active 執行碼刪除、研究保留、pytest 98 綠、`RESEARCH_JOURNEY.md`）；~~R2/R3/R4~~ ⏭️ 跳過。**重建 R0→R6 完成；live 已轉被動，待使用者部署。**
+- **執行順序**：~~前置~~ ✅ → ~~R0~~ ✅ → ~~R1~~ ✅（K=cherry-pick、加格僅方向性、FAIL）→ ~~R-attrib~~ ✅（無層加 alpha、唯 regime 降 DD、籌碼疑慮坐實）→ ~~R5~~ ✅（…被動為主誠實出口、總 Gate FAIL）→ ~~R6~~ ✅（被動落地 0050+**MA200-85%** overlay + **倉庫清理**：舊 active 執行碼刪除、研究保留、pytest 98 綠、`RESEARCH_JOURNEY.md`）；~~R2/R3/R4~~ ⏭️ 跳過。**重建 R0→R6 完成；live 已轉被動（→ 2026-06-23 已切 allocator）。**
 
 *版本：v1 | 2026-06-16 | 性質：等乾淨 PIT 資料就緒後的執行 playbook（非定論，每步綁 OOS）*

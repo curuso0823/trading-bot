@@ -227,6 +227,30 @@ def test_rebalance_triggers_outside_band():
     assert act.target_qty > act.current_qty
 
 
+def test_rebalance_buy_respects_slippage_cash_constraint():
+    """回歸（2026-06-23 首筆建倉失敗）：100% 目標 + 全現金 + 滑價時，下單量須在
+    fill=round(price×(1+slip),2)（=main.py 實際成交價）下仍買得起；否則 broker 回 insufficient_cash。
+    修復前 sizing 用原價、執行用 fill → 差一個 slippage 而全數被拒、bot 無法建倉。"""
+    from src.utils.helpers import calc_trade_cost, lot_size
+    eng = _eng()
+    cash, slip, lot = 150_000.0, 0.0015, lot_size()
+    for price in (48.5, 95.0, 111.25, 190.0):
+        act = eng.decide_rebalance(equity=cash, cash=cash, current_qty=0, price=price,
+                                   target_exposure=1.0, force_monthly=True, slippage=slip)
+        assert act.side == "buy" and act.delta_qty >= 1
+        fill = round(price * (1 + slip), 2)
+        total = fill * act.delta_qty * lot + calc_trade_cost(fill, act.delta_qty, "buy")["fee"]
+        assert total <= cash, f"price={price}: 成交成本 {total:.0f} > 現金 {cash:.0f}（slippage 未納入 sizing）"
+
+
+def test_rebalance_slippage_default_is_neutral():
+    """slippage 預設 0.0 → 與不傳該參數逐位相同（additive 行為中性，護住既有 105+ 測試）。"""
+    eng = _eng()
+    kw = dict(equity=100_000, cash=100_000, current_qty=0, price=50.0,
+              target_exposure=1.0, force_monthly=True)
+    assert eng.decide_rebalance(**kw).delta_qty == eng.decide_rebalance(**kw, slippage=0.0).delta_qty
+
+
 def test_rebalance_monthly_forces_even_within_band():
     """偏離僅 2pp（帶內）但 force_monthly=True → 仍調倉。"""
     eng = _eng()

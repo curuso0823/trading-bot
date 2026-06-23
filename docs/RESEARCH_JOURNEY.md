@@ -1,13 +1,14 @@
-# 研究歷程報告 — 從「手挑籌碼策略」到「被動 0050 + MA200 防線」
+# 研究歷程報告 — 從「手挑籌碼策略」到「被動 0050 + MA200 防線」，再到「M5 6 資產 Asset Allocator」
 
-> **建立 2026-06-17。** 本檔統整本專案完整研究歷程（Phase 0→11 ＋ PIT 重建 R0→R6），是**一路研究改進過程的單一回顧文件**。
-> 細節數字與逐步記錄見：`taiwan_trading_bot_master.md` 第六章、`docs/IMPROVEMENT_PLAN_v2.md`（含附錄 B 污染稽核）、`docs/PIT_REBUILD_PLAN.md`（R0–R6 結果）、`CLAUDE.md`（現況真相）。
+> **建立 2026-06-17。最後更新 2026-06-23（§(h)）。** 本檔統整本專案完整研究歷程（Phase 0→11 ＋ PIT 重建 R0→R6 ＋ 事件研究 §(a)–(g) ＋ M5 allocator 上線 §(h)），是**一路研究改進過程的單一回顧文件**。
+> **現況一句話（2026-06-23）**：live 已由 R6 被動（0050 vol-target + MA200 overlay）切換為 **M5 6 資產 Asset Allocator**（`config/settings.yaml strategy.mode: allocator`、M0+M1+M2 三層全開），2026-06-23 由**使用者拍板部署**、進入 **paper 評估**（≥十幾天）。⚠️ 此為鐵則#2「使用者拍板部署」分支下的 paper 評估，**非研究 Gate 通過**；R5 裁決（誠實池無穩健 alpha、0050 報酬王）**仍成立未翻案**，allocator＝使用者選定的分散+風控組合、**非經證實 alpha**。詳見 §(h)。
+> 細節數字與逐步記錄見：`taiwan_trading_bot_master.md` 第六章、`docs/IMPROVEMENT_PLAN_v2.md`（含附錄 B 污染稽核）、`docs/PIT_REBUILD_PLAN.md`（R0–R6 結果）、`docs/MULTI_ASSET_UPGRADE_PLAN.md`（資產分配器 M0–M5 計畫）、`CLAUDE.md`（現況真相）。
 
 ---
 
 ## TL;DR（一段話）
 
-原始「手挑 35 檔 + 籌碼/TA + ATR 移動停損」主動策略的帳面績效（年化 12.7% / Sharpe 1.16 / DD −16%）**經證實大半來自後見之明污染**（手挑 universe 用未來資訊事後挑贏家）。在**無 look-ahead 的乾淨 PIT 資料**上從零重建（R0→R5）後，**誠實池無可前瞻複製的 alpha**：沒有任何訊號層（TA / 籌碼 / 動量）加得出穩健或統計顯著的超額；唯一真實且 K-穩健的東西是 **regime 的降-回撤（防禦、非 alpha）**，而它在風險對齊比較下**仍不顯著、且打不贏單純持有 0050**。據此**誠實出口＝被動為主**：live 已改為 **0050 vol-target + MA200 overlay（跌破 MA200 留倉 85% / 漲回回滿）**＝R6。舊 active 策略的**直接執行路徑已刪除**，研究過程全數保留並由本報告統整。⚠️ 所有 OOS 數字仍是**上界**（FinMind 無下市資料 → survivorship 無法消除）。**（2026-06-18 後續）** 再對該防禦 overlay 做 **whipsaw 修正**（E1 N 日確認 + E2 緩衝帶），經 walk-forward 驗證後整併入 live（combined N=3 + 1% 帶）：**結構 Gate PASS（降 whipsaw、DD 不惡化、牛市不犧牲）、但 alpha 仍 FAIL（對同 beta 0050 無顯著超額）**＝結構性微調、非 alpha（見 §(f)）。
+原始「手挑 35 檔 + 籌碼/TA + ATR 移動停損」主動策略的帳面績效（年化 12.7% / Sharpe 1.16 / DD −16%）**經證實大半來自後見之明污染**（手挑 universe 用未來資訊事後挑贏家）。在**無 look-ahead 的乾淨 PIT 資料**上從零重建（R0→R5）後，**誠實池無可前瞻複製的 alpha**：沒有任何訊號層（TA / 籌碼 / 動量）加得出穩健或統計顯著的超額；唯一真實且 K-穩健的東西是 **regime 的降-回撤（防禦、非 alpha）**，而它在風險對齊比較下**仍不顯著、且打不贏單純持有 0050**。據此**誠實出口＝被動為主**：live 當時改為 **0050 vol-target + MA200 overlay（跌破 MA200 留倉 85% / 漲回回滿）**＝R6。舊 active 策略的**直接執行路徑已刪除**，研究過程全數保留並由本報告統整。⚠️ 所有 OOS 數字仍是**上界**（FinMind 無下市資料 → survivorship 無法消除）。**（2026-06-18 後續）** 再對該防禦 overlay 做 **whipsaw 修正**（E1 N 日確認 + E2 緩衝帶），經 walk-forward 驗證後整併入 live（combined N=3 + 1% 帶）：**結構 Gate PASS（降 whipsaw、DD 不惡化、牛市不犧牲）、但 alpha 仍 FAIL（對同 beta 0050 無顯著超額）**＝結構性微調、非 alpha（見 §(f)）。**（2026-06-23 後續）** 使用者拍板把 live 從單一 0050 被動擴成 **M5 6 資產 Asset Allocator**（0050/00981A/00991A/黃金 00635U/美債 00864B/台幣 MMF + M0 再平衡 + M1 股票腿 regime de-risk + M2 USD-regime 債↔現金 tilt）進入 paper 評估——**多資產分散+風控組合、非經證實 alpha；R5「主動無穩健 alpha、0050 報酬王」仍未翻案**（見 §(h)）。
 
 ---
 
@@ -65,10 +66,12 @@
 
 ## (e) 落地：被動 R6（0050 + MA200 防線；最終留倉 85%）
 
+> ⚠️ **本節描述 R6 當時（2026-06-17）的 live 狀態；2026-06-23 live 已切換為 M5 6 資產 allocator，0050+MA200 overlay 降為其中的 M1 股票腿 regime de-risk 一環，見 §(h)。** 以下「live＝…」為當時狀態，研究數字/裁決不變。
+
 - 使用者選**被動為主**、口味＝**vol-target + MA200 overlay**（平時跟 0050、跌破 MA200 退、漲回再跟）。
 - **零 code 改動上線機制**：live 早有 active/benchmark 模式開關（`config/settings.yaml strategy.mode`）→ flip 即可。
 - **退場深度細網格掃描**（0~100% 留倉，5% 步長；`r6_retreat_finegrid.py`）：單調 trade-off（留倉↑→報酬↑、2022 保護↓、2018 whipsaw↓）；全期 maxDD U 形（兩端最差、中段最淺）→ **避免全退(whipsaw 自傷)與全不退(無保護)兩極**；**明示為風險偏好旋鈕、非挑 sample 峰值**。
-- **最終 live 定稿（留倉 85%）**：`settings.yaml` benchmark＝0050 / `target_daily_vol 1.0`（停 vol-cap＝base 100% 跟 0050）/ `regime_overlay true` / `regime_ma 200` / **`regime_action 0.85`**（跌破 MA200 留 85% 曝險、漲回回滿）。引擎 `regime_action` additive 支援數值（zero/half 不變）。
+- **R6 live 定稿（留倉 85%；此為 2026-06-17~06-22 的 live，2026-06-23 已切 allocator 見 §(h)）**：`settings.yaml` benchmark＝0050 / `target_daily_vol 1.0`（停 vol-cap＝base 100% 跟 0050）/ `regime_overlay true` / `regime_ma 200` / **`regime_action 0.85`**（跌破 MA200 留 85% 曝險、漲回回滿）。引擎 `regime_action` additive 支援數值（zero/half 不變）。
 - **誠實定位**：**結構性降回撤規則、非經證實 outperformer**（R5 無顯著 alpha；overlay 前瞻＝降深熊 DD、但 MA 附近 whipsaw、牛市≈跟 0050；分年回測「贏 0050」是 2022 期間特性 + 雜訊，**不外推**）。
 
 ---
@@ -99,7 +102,26 @@
 
 - **共同教訓**：所有「更早/更準崩盤訊號」方向，要嘛在開盤跳空被吸收（美股線）、要嘛假觸發成本 > 防禦效益（E4/E5/E7）、要嘛資料不足以驗證（E8）。**無一翻案 R5「無 alpha、0050 報酬王、regime 僅防禦」。**
 - **負結果中唯一可用線索**：若有明確 drawdown mandate，降 DD 的槓桿＝**flat-deep（直接把 `regime_action` 砍更深，如 0.70/0.60）**——但那是沿 R6 已知前緣的**風險偏好抉擇、非 alpha、非研究新發現**（R6 已掃過並選 0.85；E7b 的 matched-D 對照證實它支配 US-conditioning）。
-- **🟩 live 分隔線**：自 §(f) **E1+E2** 起，live（0050 + MA200 連3日+1%帶-85% overlay）**未再有任何改動**；E4–E8 全為**沙盒研究歸檔、零 live/engine/config 變更**。
+- **🟩 live 分隔線（此句描述 2026-06-18~06-22 期間）**：自 §(f) **E1+E2** 起，整個事件偵測延伸研究（E4–E8）期間 live（0050 + MA200 連3日+1%帶-85% overlay）**未再有任何改動**，E4–E8 全為**沙盒研究歸檔、零 live/engine/config 變更**。**（2026-06-23 後續：使用者另案拍板把 live 切換為 M5 6 資產 allocator，見 §(h)——此非 E4–E8 任一研究線翻案，而是 multi-asset 升級計畫的部署分支。）**
+
+---
+
+## (h) live 轉向：M5 6 資產 Asset Allocator 上線（2026-06-23，使用者拍板部署、進入 paper 評估）
+
+> **這是「使用者拍板部署」分支下的 live 變更（鐵則#2），不是研究 Gate 通過。** allocator＝**使用者選定的多資產分散 + regime 風控組合**，**非經證實 alpha**；**R5 裁決（誠實 PIT 池無穩健 alpha、0050 為報酬王）仍成立、未翻案**。survivorship 上界 caveat 不變。**本節不新增任何 alpha 宣稱**——M0/M1/M2 三層全是**分散與降回撤的風控結構**，效益定位同 R6 overlay（結構性、非超額）。設計來源見 `docs/MULTI_ASSET_UPGRADE_PLAN.md`（資產分配器 M0–M5）。
+
+- **遷移：benchmark（單一 0050 被動）→ allocator（6 資產書）。** `config/settings.yaml strategy.mode` 由 `benchmark` 改為 **`allocator`**。R6 的 0050+MA200 overlay 並未消失，而是**降為 allocator 內「M1 股票腿 regime de-risk」一環**（見下）；單一資產被動升級為多資產分散組合。
+- **目標權重（書）**：0050 **35%** / 00981A **16%** / 00991A **16%** / 黃金 00635U **10%** / 美債 00864B **11.5%** / 台幣 MMF（合成台幣現金 sleeve）**11.5%**。本金 **NT$150,000**、`mode=paper`（Fugle 盤中零股成交價、模擬撮合）。初始建倉腳本 `deploy/build_initial_book.py --execute`。
+- **三層 regime overlay 全開（各自資料源）**：
+  - **M0 — 不對稱帶寬再平衡**：偏離目標權重超過（不對稱）帶寬才動，降低過度交易/whipsaw。再平衡**非每日**，觸發＝**月初 / regime 變 / usd 變**。
+  - **M1 — 股票腿 regime de-risk**（源 **FinMind**）：沿用 R6/E1+E2 的判定——**0050 連 3 日跌破 MA200×0.99 確認 → 股票腿整體 ×0.75 de-risk**（站回回滿）。即 §(e)/§(f) 的 0050+MA200 防線，現作用於整個股票腿而非單一 0050 部位。
+  - **M2 — USD regime 債↔現金 tilt**（源 **FRED `fredgraph.csv` 公開端點，免 API key**）：**CPI + Fed 雙確認**判定 USD regime → 在 **00864B（美債）↔ MMF（台幣現金）** 之間 **±5pp** tilt，且**受硬地板 clip**（不破各資產地板）。M2 於 2026-06-23 **實測抓到真資料後才上線**（雙閘＝`enabled_layers` 含 M2 **且** `M2.enabled: true`）。
+- **部署：24/7 launchd 取代每日排程。** 原 08:30 / 15:00 每日排程因 **Mac 睡眠致 08:30 從未觸發**（bot 自 ~6/16 起盤中缺席、零交易）→ 改 **launchd（KeepAlive + RunAtLoad + caffeinate，需筆電開蓋）**常駐；dashboard 也 launchd 化、綁 **0.0.0.0:8787**。停機須 `launchctl bootout`。
+- **2026-06-23 三個 live bug 修復**（`pytest` **328 passed**）：
+  1. `decide_rebalance` 滑價 sizing 缺漏 → 首筆建倉 `insufficient_cash`（加 **slippage 參數**修正）。
+  2. `conftest` 跑 `pytest` 會清掉 live 帳本 → 加 **session 級備份/還原**，保護 live paper 帳本。
+  3. 滿倉 `cash=0` 時 `TOTAL_CAPITAL` 被錯設為 50k → 改用 **`_capital_base`** 取得正確本金基準。
+- **誠實定位（重申）**：此為**使用者風險偏好下的主動配置選擇**（multi-asset 分散 + 三層風控），進入 **paper 評估期（≥十幾天）**觀察實盤撮合與行為；**不據此宣稱 alpha**，研究端 R0→R5 的「主動無穩健 alpha、被動 0050 報酬王」結論完全保留。rollback＝`strategy.mode` 回 `benchmark`（R6 被動）或更早設定。
 
 ---
 
@@ -123,4 +145,5 @@
 
 - **survivorship**：FinMind 無下市/歷史成分 → 廣池＝存活池 → 所有 OOS 仍是**上界**，真實更低。
 - **單一市場/單期**：統計 power 有限；R6 overlay 的「贏 0050」是期間相依，非穩定超額。
+- **M5 allocator（§(h)）同受此聲明約束**：6 資產分散 + M0/M1/M2 三層皆為**風控結構、非經證實 alpha**；2026-06-23 起的部署是**使用者拍板的 paper 評估**，不改變「主動無穩健 alpha、0050 為報酬王」的研究裁決，survivorship 上界亦不變。
 - **核心**：乾淨真相是「主動打不贏被動」——**接受它**＝整個 v2 後見之明稽核換來的誠實答案。
